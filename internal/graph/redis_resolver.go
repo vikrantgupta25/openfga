@@ -12,14 +12,13 @@ import (
 )
 
 var ctx = context.Background()
-var rdb *redis.Client
 
 type RedisClient struct {
 	client *redis.Client
 }
 
 func NewRedisClient() *RedisClient {
-	rdb = redis.NewClient(&redis.Options{
+	rdb := redis.NewClient(&redis.Options{
 		Addr:     "localhost:6379",
 		Password: "", // no password set
 		DB:       0,  // use default DB
@@ -75,7 +74,7 @@ func (r RedisCacheResolver) furtherFetch(req *ResolveCheckRequest, cacheKey stri
 		return nil, err
 	}
 
-	err = rdb.Set(ctx, cacheKey, resp.Allowed, 0).Err()
+	err = r.c.client.Set(ctx, cacheKey, resp.Allowed, 0).Err()
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +89,7 @@ func (r RedisCacheResolver) ResolveCheck(ctx context.Context, req *ResolveCheckR
 		return nil, err
 	}
 
-	val, err := rdb.Get(ctx, cacheKey).Result()
+	val, err := r.c.client.Get(ctx, cacheKey).Result()
 
 	switch {
 	case err == redis.Nil:
@@ -116,5 +115,5 @@ func (r RedisCacheResolver) ResolveCheck(ctx context.Context, req *ResolveCheckR
 }
 
 func (r RedisCacheResolver) Close() {
-	rdb.Close()
+	r.c.client.Close()
 }
