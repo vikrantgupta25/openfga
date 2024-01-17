@@ -218,6 +218,8 @@ type Config struct {
 	// concurrently in a query
 	ResolveNodeBreadthLimit uint32
 
+	Redis RedisConfig
+
 	Datastore       DatastoreConfig
 	GRPC            GRPCConfig
 	HTTP            HTTPConfig
@@ -230,6 +232,11 @@ type Config struct {
 	CheckQueryCache CheckQueryCache
 
 	RequestDurationDatastoreQueryCountBuckets []string
+}
+
+type RedisConfig struct {
+	Addr     string
+	Password string
 }
 
 func (cfg *Config) Verify() error {
@@ -364,6 +371,10 @@ func DefaultConfig() *Config {
 			Enabled: DefaultCheckQueryCacheEnable,
 			Limit:   DefaultCheckQueryCacheLimit,
 			TTL:     DefaultCheckQueryCacheTTL,
+		},
+		Redis: RedisConfig{
+			Addr:     "localhost:6379",
+			Password: "",
 		},
 	}
 }

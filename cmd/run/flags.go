@@ -179,5 +179,11 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 
 		util.MustBindPFlag("requestDurationDatastoreQueryCountBuckets", flags.Lookup("request-duration-datastore-query-count-buckets"))
 		util.MustBindEnv("requestDurationDatastoreQueryCountBuckets", "OPENFGA_REQUEST_DURATION_DATASTORE_QUERY_COUNT_BUCKETS")
+
+		util.MustBindPFlag("redis.addr", flags.Lookup("redis-addr"))
+		util.MustBindEnv("redis.addr", "OPENFGA_REDIS_ADDR")
+
+		util.MustBindPFlag("redis.password", flags.Lookup("redis-password"))
+		util.MustBindEnv("redis.password", "OPENFGA_REDIS_PASSWORD")
 	}
 }

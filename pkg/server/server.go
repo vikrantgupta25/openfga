@@ -108,6 +108,8 @@ type Server struct {
 	checkCache             *ccache.Cache[*graph.CachedResolveCheckResponse] // checkCache has to be shared across requests
 
 	requestDurationByQueryHistogramBuckets []uint
+	redisAddr                              string
+	redisPassword                          string
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -173,6 +175,18 @@ func WithListObjectsDeadline(deadline time.Duration) OpenFGAServiceV1Option {
 func WithListObjectsMaxResults(limit uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.listObjectsMaxResults = limit
+	}
+}
+
+func WithRedisAddr(addr string) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.redisAddr = addr
+	}
+}
+
+func WithRedisPassword(password string) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.redisPassword = password
 	}
 }
 
@@ -292,7 +306,8 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		s.checkCache = ccache.New(
 			ccache.Configure[*graph.CachedResolveCheckResponse]().MaxSize(int64(s.checkQueryCacheLimit)),
 		)
-		var redisOpts = []graph.RedisResolverOpt{graph.WithClient(graph.NewRedisClient())}
+		var redisOpts = []graph.RedisResolverOpt{graph.WithClient(graph.NewRedisClient(
+			s.redisAddr, s.redisPassword))}
 		s.checkOptions = append(s.checkOptions, graph.WithCachedResolver(
 			redisOpts,
 			graph.WithExistingCache(s.checkCache),

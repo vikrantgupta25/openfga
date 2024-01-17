@@ -197,6 +197,9 @@ func NewRunCommand() *cobra.Command {
 	// Unfortunately UintSlice/IntSlice does not work well when used as environment variable, we need to stick with string slice and convert back to integer
 	flags.StringSlice("request-duration-datastore-query-count-buckets", defaultConfig.RequestDurationDatastoreQueryCountBuckets, "datastore query count buckets used in labelling request duration by query count histogram")
 
+	flags.String("redis-addr", defaultConfig.Redis.Addr, "redis addr")
+	flags.String("redis-password", defaultConfig.Redis.Password, "redis password")
+
 	// NOTE: if you add a new flag here, update the function below, too
 
 	cmd.PreRun = bindRunFlagsFunc(flags)
@@ -504,6 +507,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithCheckQueryCacheTTL(config.CheckQueryCache.TTL),
 		server.WithRequestDurationByQueryHistogramBuckets(convertStringArrayToUintArray(config.RequestDurationDatastoreQueryCountBuckets)),
 		server.WithMaxAuthorizationModelSizeInBytes(config.MaxAuthorizationModelSizeInBytes),
+		server.WithRedisAddr(config.Redis.Addr),
+		server.WithRedisPassword(config.Redis.Password),
 		server.WithExperimentals(experimentals...),
 	)
 
