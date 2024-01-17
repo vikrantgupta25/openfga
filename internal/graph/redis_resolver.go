@@ -74,7 +74,7 @@ func (r RedisCacheResolver) furtherFetch(ctx context.Context, req *ResolveCheckR
 		return nil, err
 	}
 
-	err = r.c.client.Set(ctx, cacheKey, resp.Allowed, 0).Err()
+	err = r.c.client.Set(ctx, cacheKey, resp.Allowed, 10*time.Second).Err()
 	if err != nil {
 		return nil, err
 	}
