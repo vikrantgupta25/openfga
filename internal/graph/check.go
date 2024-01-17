@@ -147,7 +147,8 @@ func WithMaxConcurrentReads(limit uint32) LocalCheckerOption {
 
 func WithCachedResolver(opts ...CachedCheckResolverOpt) LocalCheckerOption {
 	return func(d *LocalChecker) {
-		cachedCheckResolver := NewCachedCheckResolver(d, opts...)
+		redisCheckResolver := NewRedisCheckResolver(d)
+		cachedCheckResolver := NewCachedCheckResolver(redisCheckResolver, opts...)
 		d.delegate = cachedCheckResolver
 	}
 }
