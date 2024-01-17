@@ -68,7 +68,7 @@ func NewRedisCheckResolver(delegate CheckResolver, opts ...RedisResolverOpt) *Re
 	return checker
 }
 
-func (r RedisCacheResolver) furtherFetch(req *ResolveCheckRequest, cacheKey string) (*ResolveCheckResponse, error) {
+func (r RedisCacheResolver) furtherFetch(ctx context.Context, req *ResolveCheckRequest, cacheKey string) (*ResolveCheckResponse, error) {
 	resp, err := r.delegate.ResolveCheck(ctx, req)
 	if err != nil {
 		return nil, err
@@ -93,7 +93,7 @@ func (r RedisCacheResolver) ResolveCheck(ctx context.Context, req *ResolveCheckR
 
 	switch {
 	case err == redis.Nil:
-		return r.furtherFetch(req, cacheKey)
+		return r.furtherFetch(ctx, req, cacheKey)
 	case err != nil:
 		return nil, err
 	case val == "":
