@@ -2,9 +2,12 @@ package graph
 
 import (
 	"context"
+	"fmt"
 	"github.com/karlseguin/ccache/v3"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
+	"strconv"
 	"time"
 )
 
@@ -66,12 +69,52 @@ func NewRedisCheckResolver(delegate CheckResolver, opts ...RedisResolverOpt) *Re
 	return checker
 }
 
+func (r RedisCacheResolver) furtherFetch(req *ResolveCheckRequest, cacheKey string) (*ResolveCheckResponse, error) {
+	resp, err := r.delegate.ResolveCheck(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	err = rdb.Set(ctx, cacheKey, resp.Allowed, 0).Err()
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
+
+}
+
 func (r RedisCacheResolver) ResolveCheck(ctx context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
-	//TODO implement me
-	panic("implement me")
+	cacheKey, err := CheckRequestCacheKey(req)
+	if err != nil {
+		r.logger.Error("cache key computation failed with error", zap.Error(err))
+		return nil, err
+	}
+
+	val, err := rdb.Get(ctx, cacheKey).Result()
+
+	switch {
+	case err == redis.Nil:
+		return r.furtherFetch(req, cacheKey)
+	case err != nil:
+		return nil, err
+	case val == "":
+		fmt.Println("value is empty")
+	}
+
+	allowed, err := strconv.ParseBool(val)
+	if err != nil {
+		return nil, fmt.Errorf("Not understand val", allowed)
+	}
+	return &ResolveCheckResponse{
+		Allowed: allowed,
+		ResolutionMetadata: &ResolutionMetadata{
+			Depth:               defaultResolveNodeLimit,
+			DatastoreQueryCount: 0,
+		},
+	}, nil
+
 }
 
 func (r RedisCacheResolver) Close() {
-	//TODO implement me
-	panic("implement me")
+	rdb.Close()
 }
