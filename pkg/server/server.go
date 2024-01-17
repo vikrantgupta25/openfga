@@ -292,7 +292,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		s.checkCache = ccache.New(
 			ccache.Configure[*graph.CachedResolveCheckResponse]().MaxSize(int64(s.checkQueryCacheLimit)),
 		)
+		var redisOpts = []graph.RedisResolverOpt{graph.WithClient(graph.NewRedisClient())}
 		s.checkOptions = append(s.checkOptions, graph.WithCachedResolver(
+			redisOpts,
 			graph.WithExistingCache(s.checkCache),
 			graph.WithCacheTTL(s.checkQueryCacheTTL),
 		))
@@ -349,6 +351,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	}
 	if s.checkCache != nil {
 		checkOptions = append(checkOptions, graph.WithCachedResolver(
+			nil,
 			graph.WithExistingCache(s.checkCache),
 			graph.WithCacheTTL(s.checkQueryCacheTTL),
 		))
@@ -441,6 +444,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 	}
 	if s.checkCache != nil {
 		checkOptions = append(checkOptions, graph.WithCachedResolver(
+			nil,
 			graph.WithExistingCache(s.checkCache),
 			graph.WithCacheTTL(s.checkQueryCacheTTL),
 		))

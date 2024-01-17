@@ -11,7 +11,24 @@ import (
 var ctx = context.Background()
 var rdb *redis.Client
 
+type RedisClient struct {
+	client *redis.Client
+}
+
+func NewRedisClient() *RedisClient {
+	rdb = redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "", // no password set
+		DB:       0,  // use default DB
+	})
+
+	return &RedisClient{
+		client: rdb,
+	}
+}
+
 type RedisCacheResolver struct {
+	c            *RedisClient
 	delegate     CheckResolver
 	cache        *ccache.Cache[*CachedResolveCheckResponse]
 	maxCacheSize int64
@@ -27,9 +44,9 @@ type RedisCacheResolver struct {
 type RedisResolverOpt func(*RedisCacheResolver)
 
 // WithLogger sets the logger for the cached check resolver
-func WithLoggerForRedis(logger logger.Logger) RedisResolverOpt {
+func WithClient(client *RedisClient) RedisResolverOpt {
 	return func(ccr *RedisCacheResolver) {
-		ccr.logger = logger
+		ccr.c = client
 	}
 }
 
@@ -42,11 +59,9 @@ func NewRedisCheckResolver(delegate CheckResolver, opts ...RedisResolverOpt) *Re
 		logger:       logger.NewNoopLogger(),
 	}
 
-	rdb = redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379",
-		Password: "", // no password set
-		DB:       0,  // use default DB
-	})
+	for _, opt := range opts {
+		opt(checker)
+	}
 
 	return checker
 }
