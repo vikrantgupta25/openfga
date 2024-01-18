@@ -163,6 +163,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 		checkCacheHitCounter.Inc()
 		return cachedResp.Value().convertToResolveCheckResponse(), nil
 	}
+	fmt.Println("cache should get from redis")
 
 	resp, err := c.delegate.ResolveCheck(ctx, req)
 	if err != nil {
