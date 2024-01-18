@@ -14,7 +14,7 @@ import (
 var ctx = context.Background()
 
 type RedisClient struct {
-	client *redis.Client
+	client *redis.ClusterClient
 	ttl    time.Duration
 }
 
