@@ -71,6 +71,8 @@ func NewRedisCheckResolver(delegate CheckResolver, opts ...RedisResolverOpt) *Re
 }
 
 func (r RedisCacheResolver) furtherFetch(ctx context.Context, req *ResolveCheckRequest, cacheKey string) (*ResolveCheckResponse, error) {
+	r.logger.Info("redis cache miss")
+
 	resp, err := r.delegate.ResolveCheck(ctx, req)
 	if err != nil {
 		return nil, err
@@ -78,8 +80,13 @@ func (r RedisCacheResolver) furtherFetch(ctx context.Context, req *ResolveCheckR
 
 	err = r.c.client.Set(ctx, cacheKey, resp.Allowed, r.c.ttl).Err()
 	if err != nil {
+		r.logger.Error("redis cache set failed", zap.Error(err))
+
 		return nil, err
 	}
+
+	r.logger.Info("redis cache set")
+
 	return resp, nil
 
 }
@@ -97,14 +104,21 @@ func (r RedisCacheResolver) ResolveCheck(ctx context.Context, req *ResolveCheckR
 	case err == redis.Nil:
 		return r.furtherFetch(ctx, req, cacheKey)
 	case err != nil:
+		r.logger.Error("redis fetch fail", zap.Error(err))
 		return nil, err
 	case val == "":
+		r.logger.Error("redis vale empty")
+
 		fmt.Println("value is empty")
 	}
 
+	r.logger.Info("redis able to retrieve from cache")
+
 	allowed, err := strconv.ParseBool(val)
 	if err != nil {
-		return nil, fmt.Errorf("Not understand val", allowed)
+		r.logger.Error("redis failed to parse value", zap.String("val", val))
+
+		return nil, fmt.Errorf("not understand val", allowed)
 	}
 	return &ResolveCheckResponse{
 		Allowed: allowed,
