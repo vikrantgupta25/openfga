@@ -237,6 +237,7 @@ type Config struct {
 type RedisConfig struct {
 	Addr     string
 	Password string
+	TTL      time.Duration
 }
 
 func (cfg *Config) Verify() error {
@@ -375,6 +376,7 @@ func DefaultConfig() *Config {
 		Redis: RedisConfig{
 			Addr:     "localhost:6379",
 			Password: "",
+			TTL:      10 * time.Second,
 		},
 	}
 }

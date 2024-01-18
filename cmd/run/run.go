@@ -199,6 +199,7 @@ func NewRunCommand() *cobra.Command {
 
 	flags.String("redis-addr", defaultConfig.Redis.Addr, "redis addr")
 	flags.String("redis-password", defaultConfig.Redis.Password, "redis password")
+	flags.Duration("redis-ttl", defaultConfig.Redis.TTL, "redis ttl")
 
 	// NOTE: if you add a new flag here, update the function below, too
 
@@ -509,6 +510,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithMaxAuthorizationModelSizeInBytes(config.MaxAuthorizationModelSizeInBytes),
 		server.WithRedisAddr(config.Redis.Addr),
 		server.WithRedisPassword(config.Redis.Password),
+		server.WithRedisTTL(config.Redis.TTL),
 		server.WithExperimentals(experimentals...),
 	)
 

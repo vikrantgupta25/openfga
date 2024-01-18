@@ -15,9 +15,10 @@ var ctx = context.Background()
 
 type RedisClient struct {
 	client *redis.Client
+	ttl    time.Duration
 }
 
-func NewRedisClient(addr string, password string) *RedisClient {
+func NewRedisClient(addr string, password string, ttl time.Duration) *RedisClient {
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     addr,
 		Password: password, // no password set
@@ -26,6 +27,7 @@ func NewRedisClient(addr string, password string) *RedisClient {
 
 	return &RedisClient{
 		client: rdb,
+		ttl:    ttl,
 	}
 }
 
@@ -74,7 +76,7 @@ func (r RedisCacheResolver) furtherFetch(ctx context.Context, req *ResolveCheckR
 		return nil, err
 	}
 
-	err = r.c.client.Set(ctx, cacheKey, resp.Allowed, 10*time.Second).Err()
+	err = r.c.client.Set(ctx, cacheKey, resp.Allowed, r.c.ttl).Err()
 	if err != nil {
 		return nil, err
 	}

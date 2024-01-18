@@ -185,5 +185,8 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 
 		util.MustBindPFlag("redis.password", flags.Lookup("redis-password"))
 		util.MustBindEnv("redis.password", "OPENFGA_REDIS_PASSWORD")
+
+		util.MustBindPFlag("redis.ttl", flags.Lookup("redis-ttl"))
+		util.MustBindEnv("redis.ttl", "OPENFGA_REDIS_TTL")
 	}
 }
