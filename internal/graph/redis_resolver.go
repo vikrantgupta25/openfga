@@ -19,10 +19,9 @@ type RedisClient struct {
 }
 
 func NewRedisClient(addr string, password string, ttl time.Duration) *RedisClient {
-	rdb := redis.NewClient(&redis.Options{
-		Addr:     addr,
+	rdb := redis.NewClusterClient(&redis.ClusterOptions{
+		Addrs:    []string{addr},
 		Password: password, // no password set
-		DB:       0,        // use default DB
 	})
 
 	return &RedisClient{
