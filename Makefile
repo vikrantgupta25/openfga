@@ -92,3 +92,9 @@ functional-test: ## Run functional tests (needs build-functional-test-image)
 .PHONY: bench
 bench: go-generate ## Run benchmark test. See https://pkg.go.dev/cmd/go#hdr-Testing_flags
 	go test ./... -bench . -benchtime 5s -timeout 0 -run=XXX -cpu 1 -benchmem
+
+buf-gen: ## Generate protobuf sources using buf
+	./buf.gen.yaml
+
+buf-format: buf-gen ## Format protobuf sources using buf
+	buf format -w

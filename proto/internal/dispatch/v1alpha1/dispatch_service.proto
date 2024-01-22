@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+package dispatch.v1alpha1;
+
+import "openfga/v1/openfga.proto";
+import "openfga/v1/authzmodel.proto";
+import "google/protobuf/struct.proto";
+
+service DispatchService {
+    rpc ReverseExpand(ReverseExpandRequest) returns (stream ReverseExpandResponse) {}
+}
+
+message ReverseExpandResolutionMetadata {
+    
+    // The max recursive resolution depth to resolve the query within.
+    uint64 resolution_depth = 1;
+    
+    // The number of dispatches rerquired to resolve the subproblem.
+    uint64 dispatch_count = 2;
+
+    // The number of database queries required to resolve the subproblem.
+    uint64 query_count = 3;
+}
+
+message UserRef {
+    oneof user_ref {
+        openfga.v1.Object object = 1;
+        TypedPublicWildcard typed_wildcard = 2;
+        Userset userset = 3;
+    }
+}
+
+message Userset {
+    openfga.v1.Object object = 1;
+    string relation = 2;
+}
+
+message TypedPublicWildcard {
+  string type = 1;
+}
+
+message ReverseExpandRequest {
+    string store_id = 1;
+    openfga.v1.AuthorizationModel model = 2;
+    string target_object_type = 3;
+    string target_relation = 4;
+    UserRef source_user = 5;
+    repeated openfga.v1.TupleKey contextual_tuples = 6;
+    google.protobuf.Struct context = 7;
+
+    ReverseExpandResolutionMetadata resolution_metadata = 8;
+
+
+    // edge??
+}
+
+message ReverseExpandResponse {
+    enum ConditionalResultStatus {
+        REQUIRES_FURTHER_EVAL = 0;
+        NO_FURTHER_EVAL_REQUIRED = 1;
+    }
+
+	openfga.v1.Object object = 1;
+	ConditionalResultStatus conditional_result_status = 2;
+}
