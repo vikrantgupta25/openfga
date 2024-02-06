@@ -10,6 +10,8 @@ import (
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 
+	"github.com/openfga/openfga/pkg/testutils"
+
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
@@ -1354,4 +1356,41 @@ type org
 			}
 		})
 	}
+}
+
+func BenchmarkWrite(b *testing.B, ds storage.OpenFGADatastore) {
+	storeID := ulid.Make().String()
+	model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define viewer: [user]
+	`)
+	err := ds.WriteAuthorizationModel(context.Background(), storeID, model)
+	require.NoError(b, err)
+
+	b.ResetTimer()
+
+	b.Run("5_tuples_per_request", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			writeCommand := commands.NewWriteCommand(ds)
+			_, err = writeCommand.Execute(context.Background(), &openfgav1.WriteRequest{
+				StoreId:              storeID,
+				AuthorizationModelId: model.GetId(),
+				Writes: &openfgav1.WriteRequestWrites{
+					TupleKeys: []*openfgav1.TupleKey{
+						{Object: "document:budget", Relation: "viewer", User: fmt.Sprintf("user:%s", ulid.Make().String())},
+						{Object: "document:budget", Relation: "viewer", User: fmt.Sprintf("user:%s", ulid.Make().String())},
+						{Object: "document:budget", Relation: "viewer", User: fmt.Sprintf("user:%s", ulid.Make().String())},
+						{Object: "document:budget", Relation: "viewer", User: fmt.Sprintf("user:%s", ulid.Make().String())},
+						{Object: "document:budget", Relation: "viewer", User: fmt.Sprintf("user:%s", ulid.Make().String())},
+					},
+				},
+				Deletes: nil,
+			})
+			require.NoError(b, err)
+		}
+	})
 }
