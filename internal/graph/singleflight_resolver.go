@@ -2,12 +2,15 @@ package graph
 
 import (
 	"context"
+	"log"
+	"sync"
 	"sync/atomic"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
 	"resenje.org/singleflight"
+	//"golang.org/x/sync/singleflight"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -34,7 +37,9 @@ var (
 type SingleflightCheckResolver struct {
 	delegate CheckResolver
 	group    singleflight.Group[string, ResolveCheckResponse]
-	logger   logger.Logger
+	//group  singleflight.Group
+	logger logger.Logger
+	mu     sync.Mutex
 }
 
 func NewSingleflightCheckResolver() *SingleflightCheckResolver {
@@ -68,8 +73,32 @@ func (s *SingleflightCheckResolver) ResolveCheck(
 		return nil, err
 	}
 
+	log.Printf("key=%s, depth=%d\n", key, req.GetResolutionMetadata().Depth)
+
+	// if _, ok := req.VisitedPaths[tuple.TupleKeyToString(req.GetTupleKey())]; ok {
+	// 	return nil, ErrCycleDetected
+	// }
+
+	// s.mu.Lock()
+	// lockedKeys := req.GetResolutionMetadata().LockedKeys
+	// if locked, ok := lockedKeys[key]; locked && ok {
+	// 	s.mu.Unlock()
+	// 	return s.delegate.ResolveCheck(ctx, req)
+	// }
+	// s.mu.Unlock()
+
 	var unique atomic.Bool
 	singleFlightResp, shared, err := s.group.Do(ctx, key, func(innerCtx context.Context) (ResolveCheckResponse, error) {
+		// s.mu.Lock()
+		// lockedKeys[key] = true
+		// s.mu.Unlock()
+
+		// defer func() {
+		// 	s.mu.Lock()
+		// 	lockedKeys[key] = false
+		// 	s.mu.Unlock()
+		// }()
+
 		unique.Store(true)
 		resp, err := s.delegate.ResolveCheck(innerCtx, req)
 		if err != nil {
@@ -82,6 +111,33 @@ func (s *SingleflightCheckResolver) ResolveCheck(
 		telemetry.TraceError(span, err)
 		return nil, err
 	}
+
+	// isUnique := false
+	// singleFlightResp, err, shared := s.group.Do(key, func() (interface{}, error) {
+	// 	s.mu.Lock()
+	// 	lockedKeys[key] = true
+	// 	s.mu.Unlock()
+
+	// 	defer func() {
+	// 		s.mu.Lock()
+	// 		lockedKeys[key] = false
+	// 		s.mu.Unlock()
+	// 	}()
+
+	// 	isUnique = true
+	// 	resp, err := s.delegate.ResolveCheck(ctx, req)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// 	return copyResolveResponse(*resp), nil
+	// })
+	//span.SetAttributes(singleflightRequestStateAttribute(shared, isUnique))
+	if err != nil {
+		telemetry.TraceError(span, err)
+		return nil, err
+	}
+
+	//r := singleFlightResp.(ResolveCheckResponse)
 	// Important to create a dereferenced copy of the group.Do's response, otherwise
 	// it establishes a shared memory reference between the goroutines that were
 	// involved in the de-duplication, and thus is subject to race conditions.
@@ -92,6 +148,12 @@ func (s *SingleflightCheckResolver) ResolveCheck(
 		deduplicatedDBQueryCount.Add(float64(resp.GetResolutionMetadata().DatastoreQueryCount))
 		resp.ResolutionMetadata.DatastoreQueryCount = 0
 	}
+
+	// if shared && !isUnique {
+	// 	deduplicatedDispatchCount.Inc()
+	// 	deduplicatedDBQueryCount.Add(float64(resp.GetResolutionMetadata().DatastoreQueryCount))
+	// 	resp.ResolutionMetadata.DatastoreQueryCount = 0
+	// }
 
 	return &resp, err
 }

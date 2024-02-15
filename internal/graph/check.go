@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"sync"
 
 	"github.com/hashicorp/go-multierror"
@@ -11,7 +12,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/exp/maps"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/openfga/openfga/internal/condition"
@@ -236,13 +236,13 @@ func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- ch
 // union implements a CheckFuncReducer that requires any of the provided CheckHandlerFunc to resolve
 // to an allowed outcome. The first allowed outcome causes premature termination of the reducer.
 func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
-	cancelCtx, cancel := context.WithCancel(ctx)
+	//cancelCtx, cancel := context.WithCancel(ctx)
 	resultChan := make(chan checkOutcome, len(handlers))
 
-	drain := resolver(cancelCtx, concurrencyLimit, resultChan, handlers...)
+	drain := resolver(ctx, concurrencyLimit, resultChan, handlers...)
 
 	defer func() {
-		cancel()
+		//cancel()
 		drain()
 		close(resultChan)
 	}()
@@ -278,13 +278,13 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 // intersection implements a CheckFuncReducer that requires all of the provided CheckHandlerFunc to resolve
 // to an allowed outcome. The first falsey or erroneous outcome causes premature termination of the reducer.
 func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
-	cancelCtx, cancel := context.WithCancel(ctx)
+	//cancelCtx, cancel := context.WithCancel(ctx)
 	resultChan := make(chan checkOutcome, len(handlers))
 
-	drain := resolver(cancelCtx, concurrencyLimit, resultChan, handlers...)
+	drain := resolver(ctx, concurrencyLimit, resultChan, handlers...)
 
 	defer func() {
-		cancel()
+		//cancel()
 		drain()
 		close(resultChan)
 	}()
@@ -331,14 +331,14 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 
 	limiter := make(chan struct{}, concurrencyLimit)
 
-	cancelCtx, cancel := context.WithCancel(ctx)
+	//cancelCtx, cancel := context.WithCancel(ctx)
 	baseChan := make(chan checkOutcome, 1)
 	subChan := make(chan checkOutcome, 1)
 
 	var wg sync.WaitGroup
 
 	defer func() {
-		cancel()
+		//cancel()
 		wg.Wait()
 		close(baseChan)
 		close(subChan)
@@ -350,7 +350,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	limiter <- struct{}{}
 	wg.Add(1)
 	go func() {
-		resp, err := baseHandler(cancelCtx)
+		resp, err := baseHandler(ctx)
 		baseChan <- checkOutcome{resp, err}
 		<-limiter
 		wg.Done()
@@ -359,7 +359,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	limiter <- struct{}{}
 	wg.Add(1)
 	go func() {
-		resp, err := subHandler(cancelCtx)
+		resp, err := subHandler(ctx)
 		subChan <- checkOutcome{resp, err}
 		<-limiter
 		wg.Done()
@@ -472,17 +472,17 @@ func (c *LocalChecker) ResolveCheck(
 		return nil, fmt.Errorf("relation '%s' undefined for object type '%s'", relation, objectType)
 	}
 
-	if req.VisitedPaths != nil {
-		if _, visited := req.VisitedPaths[tuple.TupleKeyToString(req.GetTupleKey())]; visited {
-			return nil, ErrCycleDetected
-		}
+	// if req.VisitedPaths != nil {
+	// 	if _, visited := req.VisitedPaths[tuple.TupleKeyToString(req.GetTupleKey())]; visited {
+	// 		return nil, ErrCycleDetected
+	// 	}
 
-		req.VisitedPaths[tuple.TupleKeyToString(req.GetTupleKey())] = struct{}{}
-	} else {
-		req.VisitedPaths = map[string]struct{}{
-			tuple.TupleKeyToString(req.GetTupleKey()): {},
-		}
-	}
+	// 	req.VisitedPaths[tuple.TupleKeyToString(req.GetTupleKey())] = struct{}{}
+	// } else {
+	// 	req.VisitedPaths = map[string]struct{}{
+	// 		tuple.TupleKeyToString(req.GetTupleKey()): {},
+	// 	}
+	// }
 
 	resp, err := union(ctx, c.concurrencyLimit, c.checkRewrite(ctx, req, rel.GetRewrite()))
 	if err != nil {
@@ -659,9 +659,9 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				if usersetRelation != "" {
 					tupleKey := tuple.NewTupleKey(usersetObject, usersetRelation, reqTupleKey.GetUser())
 
-					if _, visited := req.VisitedPaths[tuple.TupleKeyToString(tupleKey)]; visited {
-						return nil, ErrCycleDetected
-					}
+					// if _, visited := req.VisitedPaths[tuple.TupleKeyToString(tupleKey)]; visited {
+					// 	return nil, ErrCycleDetected
+					// }
 
 					handlers = append(handlers, c.dispatch(
 						ctx,
@@ -673,9 +673,11 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 							ResolutionMetadata: &ResolutionMetadata{
 								Depth:               req.GetResolutionMetadata().Depth - 1,
 								DatastoreQueryCount: response.GetResolutionMetadata().DatastoreQueryCount,
+								LockedKeys:          req.GetResolutionMetadata().LockedKeys,
 							},
 							VisitedPaths: maps.Clone(req.VisitedPaths),
-							Context:      req.GetContext(),
+							// VisitedPaths: req.VisitedPaths,
+							Context: req.GetContext(),
 						}))
 				}
 			}
@@ -733,9 +735,9 @@ func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheck
 			req.TupleKey.GetUser(),
 		)
 
-		if _, visited := req.VisitedPaths[tuple.TupleKeyToString(rewrittenTupleKey)]; visited {
-			return nil, ErrCycleDetected
-		}
+		// if _, visited := req.VisitedPaths[tuple.TupleKeyToString(rewrittenTupleKey)]; visited {
+		// 	return nil, ErrCycleDetected
+		// }
 
 		return c.dispatch(
 			ctx,
@@ -747,9 +749,11 @@ func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheck
 				ResolutionMetadata: &ResolutionMetadata{
 					Depth:               req.GetResolutionMetadata().Depth - 1,
 					DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount,
+					LockedKeys:          req.GetResolutionMetadata().LockedKeys,
 				},
 				VisitedPaths: maps.Clone(req.VisitedPaths),
-				Context:      req.GetContext(),
+				//VisitedPaths: req.VisitedPaths,
+				Context: req.GetContext(),
 			})(ctx)
 	}
 }
@@ -858,9 +862,9 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 				}
 			}
 
-			if _, visited := req.VisitedPaths[tuple.TupleKeyToString(tupleKey)]; visited {
-				return nil, ErrCycleDetected
-			}
+			// if _, visited := req.VisitedPaths[tuple.TupleKeyToString(tupleKey)]; visited {
+			// 	return nil, ErrCycleDetected
+			// }
 
 			handlers = append(handlers, c.dispatch(
 				ctx,
@@ -872,9 +876,11 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 					ResolutionMetadata: &ResolutionMetadata{
 						Depth:               req.GetResolutionMetadata().Depth - 1,
 						DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount, // add TTU read below
+						LockedKeys:          req.GetResolutionMetadata().LockedKeys,
 					},
 					VisitedPaths: maps.Clone(req.VisitedPaths),
-					Context:      req.GetContext(),
+					//VisitedPaths: req.VisitedPaths,
+					Context: req.GetContext(),
 				}))
 		}
 

@@ -47,11 +47,13 @@ type document
 	)
 	ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
+	cycleCheckResolver := NewCycleCheckResolver()
 	singleflightCheckResolver := NewSingleflightCheckResolver()
 	localCheckResolver := NewLocalChecker()
 
+	cycleCheckResolver.SetDelegate(singleflightCheckResolver)
 	singleflightCheckResolver.SetDelegate(localCheckResolver)
-	localCheckResolver.SetDelegate(singleflightCheckResolver)
+	localCheckResolver.SetDelegate(cycleCheckResolver)
 
 	tupleKeys := []*openfgav1.TupleKey{
 		tuple.NewTupleKey("document:1", "viewer", "user:anne"),
@@ -64,7 +66,8 @@ type document
 				AuthorizationModelID: model.GetId(),
 				TupleKey:             tupleKey,
 				ResolutionMetadata: &ResolutionMetadata{
-					Depth: 25,
+					Depth:      25,
+					LockedKeys: make(map[string]bool),
 				},
 			})
 			require.NoError(t, err)
@@ -117,11 +120,13 @@ relations
 	)
 	ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
+	cycleCheckResolver := NewCycleCheckResolver()
 	singleflightCheckResolver := NewSingleflightCheckResolver()
 	localCheckResolver := NewLocalChecker()
 
+	cycleCheckResolver.SetDelegate(singleflightCheckResolver)
 	singleflightCheckResolver.SetDelegate(localCheckResolver)
-	localCheckResolver.SetDelegate(singleflightCheckResolver)
+	localCheckResolver.SetDelegate(cycleCheckResolver)
 
 	tupleKeys := []*openfgav1.TupleKey{
 		tuple.NewTupleKey("module:a", "viewer", "user:anne"),
@@ -132,18 +137,22 @@ relations
 		tuple.NewTupleKey("document:b", "viewer", "user:anne"),
 	}
 
+	//for i := 0; i < 100; i++ {
 	for _, tupleKey := range tupleKeys {
 		resp, err := singleflightCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: model.GetId(),
 			TupleKey:             tupleKey,
 			ResolutionMetadata: &ResolutionMetadata{
-				Depth: 25,
+				Depth:      25,
+				LockedKeys: make(map[string]bool),
 			},
 		})
 		require.NoError(t, err)
 		require.True(t, resp.GetAllowed())
 	}
+	//}
+
 }
 
 // TestSingleflightCheckResolver_ContextCancellation is a test to assert
@@ -185,11 +194,13 @@ relations
 	)
 	ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
+	cycleCheckResolver := NewCycleCheckResolver()
 	singleflightCheckResolver := NewSingleflightCheckResolver()
 	localCheckResolver := NewLocalChecker()
 
+	cycleCheckResolver.SetDelegate(singleflightCheckResolver)
 	singleflightCheckResolver.SetDelegate(localCheckResolver)
-	localCheckResolver.SetDelegate(singleflightCheckResolver)
+	localCheckResolver.SetDelegate(cycleCheckResolver)
 
 	var wg sync.WaitGroup
 
@@ -208,7 +219,8 @@ relations
 				AuthorizationModelID: model.GetId(),
 				TupleKey:             tuple.NewTupleKey("folder:4", "reader", "user:anne"),
 				ResolutionMetadata: &ResolutionMetadata{
-					Depth: 25,
+					Depth:      25,
+					LockedKeys: make(map[string]bool),
 				},
 			})
 		}()
@@ -224,7 +236,8 @@ relations
 				AuthorizationModelID: model.GetId(),
 				TupleKey:             tuple.NewTupleKey("folder:2", "reader", "user:anne"),
 				ResolutionMetadata: &ResolutionMetadata{
-					Depth: 25,
+					Depth:      25,
+					LockedKeys: make(map[string]bool),
 				},
 			})
 
@@ -273,19 +286,25 @@ func TestSingleflightResolver(t *testing.T) {
 		t.Cleanup(singleflightCheckResolver.Close)
 
 		resp, err := singleflightCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
-			StoreID:            storeID,
-			TupleKey:           tuple.NewTupleKey("doc:1", "a4", "user:jon"),
-			ContextualTuples:   nil,
-			ResolutionMetadata: &ResolutionMetadata{Depth: defaultResolveNodeLimit},
+			StoreID:          storeID,
+			TupleKey:         tuple.NewTupleKey("doc:1", "a4", "user:jon"),
+			ContextualTuples: nil,
+			ResolutionMetadata: &ResolutionMetadata{
+				Depth:      defaultResolveNodeLimit,
+				LockedKeys: make(map[string]bool),
+			},
 		})
 		require.NoError(t, err)
 		require.True(t, resp.GetAllowed())
 
 		resp, err = singleflightCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
-			StoreID:            storeID,
-			TupleKey:           tuple.NewTupleKey("doc:2", "a4", "user:jon"),
-			ContextualTuples:   nil,
-			ResolutionMetadata: &ResolutionMetadata{Depth: defaultResolveNodeLimit},
+			StoreID:          storeID,
+			TupleKey:         tuple.NewTupleKey("doc:2", "a4", "user:jon"),
+			ContextualTuples: nil,
+			ResolutionMetadata: &ResolutionMetadata{
+				Depth:      defaultResolveNodeLimit,
+				LockedKeys: make(map[string]bool),
+			},
 		})
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
@@ -327,10 +346,13 @@ func TestSingleflightResolver(t *testing.T) {
 		var numFewerDBQueries int
 		for i := 0; i < testIterations; i++ {
 			resp, err := singleflightCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
-				StoreID:            storeID,
-				TupleKey:           tuple.NewTupleKey("doc:1", "a4", "user:jon"),
-				ContextualTuples:   nil,
-				ResolutionMetadata: &ResolutionMetadata{Depth: defaultResolveNodeLimit},
+				StoreID:          storeID,
+				TupleKey:         tuple.NewTupleKey("doc:1", "a4", "user:jon"),
+				ContextualTuples: nil,
+				ResolutionMetadata: &ResolutionMetadata{
+					Depth:      defaultResolveNodeLimit,
+					LockedKeys: make(map[string]bool),
+				},
 			})
 			require.NoError(t, err)
 			require.False(t, resp.GetAllowed())
@@ -377,10 +399,13 @@ func TestSingleflightResolver(t *testing.T) {
 		t.Cleanup(singleflightCheckResolver.Close)
 
 		resp, err := singleflightCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
-			StoreID:            storeID,
-			TupleKey:           tuple.NewTupleKey("document:1", "viewer3", "user:jon"),
-			ContextualTuples:   nil,
-			ResolutionMetadata: &ResolutionMetadata{Depth: defaultResolveNodeLimit},
+			StoreID:          storeID,
+			TupleKey:         tuple.NewTupleKey("document:1", "viewer3", "user:jon"),
+			ContextualTuples: nil,
+			ResolutionMetadata: &ResolutionMetadata{
+				Depth:      defaultResolveNodeLimit,
+				LockedKeys: make(map[string]bool),
+			},
 		})
 
 		require.ErrorIs(t, err, ErrCycleDetected)
