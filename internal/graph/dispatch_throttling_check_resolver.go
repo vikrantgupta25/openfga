@@ -2,13 +2,13 @@ package graph
 
 import (
 	"context"
+	"github.com/openfga/openfga/pkg/server/errors"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/openfga/openfga/internal/build"
-	"github.com/openfga/openfga/pkg/telemetry"
 )
 
 // DispatchThrottlingCheckResolverConfig encapsulates configuration for dispatch throttling check resolver
@@ -99,16 +99,20 @@ func (r *DispatchThrottlingCheckResolver) ResolveCheck(ctx context.Context,
 	currentNumDispatch := req.GetRequestMetadata().DispatchCounter.Load()
 
 	if currentNumDispatch > r.config.Threshold {
-		start := time.Now()
-		<-r.throttlingQueue
-		end := time.Now()
-		timeWaiting := end.Sub(start).Milliseconds()
+		return nil, errors.AuthorizationModelResolutionTooComplex
+		/*
+			start := time.Now()
+			<-r.throttlingQueue
+			end := time.Now()
+			timeWaiting := end.Sub(start).Milliseconds()
 
-		rpcInfo := telemetry.RPCInfoFromContext(ctx)
-		dispatchThrottlingResolverDelayMsHistogram.WithLabelValues(
-			rpcInfo.Service,
-			rpcInfo.Method,
-		).Observe(float64(timeWaiting))
+			rpcInfo := telemetry.RPCInfoFromContext(ctx)
+			dispatchThrottlingResolverDelayMsHistogram.WithLabelValues(
+				rpcInfo.Service,
+				rpcInfo.Method,
+			).Observe(float64(timeWaiting))
+		
+		*/
 	}
 
 	return r.delegate.ResolveCheck(ctx, req)
