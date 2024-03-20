@@ -146,7 +146,13 @@ func NewListObjectsQuery(
 		opt(query)
 	}
 
-	query.datastore = storagewrappers.NewBoundedConcurrencyTupleReader(query.datastore, query.maxConcurrentReads)
+	dsThrottler := storagewrappers.NewDatastoreThrottlingTupleReader(query.datastore, 30)
+
+	defer dsThrottler.Close()
+
+	query.datastore =
+		storagewrappers.NewBoundedConcurrencyTupleReader(
+			dsThrottler, query.maxConcurrentReads)
 
 	return query, nil
 }

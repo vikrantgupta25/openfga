@@ -753,13 +753,19 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		}
 	}
 
+	dsThrottler := storagewrappers.NewDatastoreThrottlingTupleReader(
+		storagewrappers.NewCombinedTupleReader(
+			s.datastore,
+			req.GetContextualTuples().GetTupleKeys(),
+		),
+		30)
+
+	defer dsThrottler.Close()
+
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 	ctx = storage.ContextWithRelationshipTupleReader(ctx,
 		storagewrappers.NewBoundedConcurrencyTupleReader(
-			storagewrappers.NewCombinedTupleReader(
-				s.datastore,
-				req.GetContextualTuples().GetTupleKeys(),
-			),
+			dsThrottler,
 			s.maxConcurrentReadsForCheck,
 		),
 	)
