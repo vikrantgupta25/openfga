@@ -2,80 +2,34 @@ package storagewrappers
 
 import (
 	"context"
-	"github.com/openfga/openfga/pkg/server/errors"
+	"fmt"
 	"sync/atomic"
 	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/internal/build"
-	"github.com/openfga/openfga/pkg/storage"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-)
 
-const dsThrottlingSpanAttribute = "ds_throttling"
+	"github.com/openfga/openfga/pkg/storage"
+)
 
 var _ storage.RelationshipTupleReader = (*datastoreThrottlingTupleReader)(nil)
 
-var (
-	dsThrottlingReadDelayMsHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace:                       build.ProjectName,
-		Name:                            "datastore_throttling_read_delay_ms",
-		Help:                            "Time spent waiting for Read, ReadUserTuple and ReadUsersetTuples calls to the datastore due to throttling",
-		Buckets:                         []float64{1, 3, 5, 10, 25, 50, 100, 1000, 5000}, // Milliseconds. Upper bound is config.UpstreamTimeout.
-		NativeHistogramBucketFactor:     1.1,
-		NativeHistogramMaxBucketNumber:  100,
-		NativeHistogramMinResetDuration: time.Hour,
-	}, []string{"grpc_service", "grpc_method"})
-)
-
 type datastoreThrottlingTupleReader struct {
 	storage.RelationshipTupleReader
-	readCounter     *atomic.Uint32
-	threshold       uint32
-	ticker          *time.Ticker
-	throttlingQueue chan struct{}
-	done            chan struct{}
+	throttlingServer *DatastoreThrottlingTupleReaderServer
+	readCounter      *atomic.Uint32
+	threshold        uint32
 }
 
-func NewDatastoreThrottlingTupleReader(wrapped storage.RelationshipTupleReader, threshold uint32) *datastoreThrottlingTupleReader {
+func NewDatastoreThrottlingTupleReader(wrapped storage.RelationshipTupleReader,
+	threshold uint32,
+	throttlingServer *DatastoreThrottlingTupleReaderServer) *datastoreThrottlingTupleReader {
 	ds := &datastoreThrottlingTupleReader{
 		RelationshipTupleReader: wrapped,
 		readCounter:             new(atomic.Uint32),
 		threshold:               threshold,
-		ticker:                  time.NewTicker(10 * time.Millisecond),
-		throttlingQueue:         make(chan struct{}),
-		done:                    make(chan struct{}),
+		throttlingServer:        throttlingServer,
 	}
-	//go ds.runTicker()
 	return ds
-}
-
-func (r *datastoreThrottlingTupleReader) Close() {
-	//r.done <- struct{}{}
-}
-
-func (r *datastoreThrottlingTupleReader) nonBlockingSend(signalChan chan struct{}) {
-	select {
-	case signalChan <- struct{}{}:
-		// message sent
-	default:
-		// message dropped
-	}
-}
-
-func (r *datastoreThrottlingTupleReader) runTicker() {
-	for {
-		select {
-		case <-r.done:
-			r.ticker.Stop()
-			close(r.done)
-			close(r.throttlingQueue)
-			return
-		case <-r.ticker.C:
-			r.nonBlockingSend(r.throttlingQueue)
-		}
-	}
 }
 
 // ReadUserTuple tries to return one tuple that matches the provided key exactly.
@@ -117,24 +71,20 @@ func (r *datastoreThrottlingTupleReader) ReadUsersetTuples(
 
 func (r *datastoreThrottlingTupleReader) throttleQuery(ctx context.Context) error {
 	currentCount := r.readCounter.Add(1)
-	if currentCount > r.threshold {
-		return errors.AuthorizationModelResolutionTooComplex
-		/*
-			start := time.Now()
-			<-r.throttlingQueue
+	if currentCount > r.threshold && r.throttlingServer != nil {
+		start := time.Now()
+		delta := (currentCount - r.threshold) / 5
+		numWait := min(2^delta, 3000)
+		for i := 0; i < int(numWait); i++ {
 			end := time.Now()
-			timeWaiting := end.Sub(start).Milliseconds()
-
-			rpcInfo := telemetry.RPCInfoFromContext(ctx)
-			dsThrottlingReadDelayMsHistogram.WithLabelValues(
-				rpcInfo.Service,
-				rpcInfo.Method,
-			).Observe(float64(timeWaiting))
-
-			span := trace.SpanFromContext(ctx)
-			span.SetAttributes(attribute.Int64(dsThrottlingSpanAttribute, timeWaiting))
-
-		*/
+			timeWaiting := end.Sub(start)
+			if timeWaiting < 3*time.Second {
+				r.throttlingServer.throttleQuery(ctx)
+			} else {
+				return fmt.Errorf("waiting too long")
+			}
+		}
+		r.throttlingServer.throttleQuery(ctx)
 	}
 	return nil
 }

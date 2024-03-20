@@ -142,6 +142,8 @@ type Server struct {
 	dispatchThrottlingThreshold              uint32
 
 	dispatchThrottlingCheckResolver *graph.DispatchThrottlingCheckResolver
+
+	datastoreThrottlingServer *storagewrappers.DatastoreThrottlingTupleReaderServer
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -432,6 +434,8 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, fmt.Errorf("request duration by dispatch count buckets must not be empty")
 	}
 
+	s.datastoreThrottlingServer = storagewrappers.NewDatastoreThrottlingTupleReaderServer(20 * time.Millisecond)
+
 	s.typesystemResolver, s.typesystemResolverStop = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
 
 	return s, nil
@@ -449,6 +453,10 @@ func (s *Server) Close() {
 
 	if s.checkResolver != nil {
 		s.checkResolver.Close()
+	}
+
+	if s.datastoreThrottlingServer != nil {
+		s.datastoreThrottlingServer.Close()
 	}
 
 	s.typesystemResolverStop()
@@ -753,21 +761,18 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		}
 	}
 
-	dsThrottler := storagewrappers.NewDatastoreThrottlingTupleReader(
-		storagewrappers.NewCombinedTupleReader(
-			s.datastore,
-			req.GetContextualTuples().GetTupleKeys(),
-		),
-		30)
-
-	defer dsThrottler.Close()
-
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 	ctx = storage.ContextWithRelationshipTupleReader(ctx,
-		storagewrappers.NewBoundedConcurrencyTupleReader(
-			dsThrottler,
-			s.maxConcurrentReadsForCheck,
-		),
+		storagewrappers.NewDatastoreThrottlingTupleReader(
+			storagewrappers.NewBoundedConcurrencyTupleReader(
+				storagewrappers.NewCombinedTupleReader(
+					s.datastore,
+					req.GetContextualTuples().GetTupleKeys(),
+				),
+				s.maxConcurrentReadsForCheck,
+			),
+			30,
+			s.datastoreThrottlingServer),
 	)
 
 	checkRequestMetadata := graph.NewCheckRequestMetadata(s.resolveNodeLimit)
