@@ -35,6 +35,10 @@ const (
 	DefaultDispatchThrottlingEnabled   = false
 	DefaultDispatchThrottlingFrequency = 10 * time.Microsecond
 	DefaultDispatchThrottlingThreshold = 100
+
+	DefaultDSThrottlingEnabled   = false
+	DefaultDSThrottlingFrequency = 20 * time.Millisecond
+	DefaultDSThrottlingThreshold = 30
 )
 
 type DatastoreMetricsConfig struct {
@@ -185,6 +189,13 @@ type DispatchThrottlingConfig struct {
 	Threshold uint32
 }
 
+// DSThrottlingConfig defines configuration for datastore query throttling
+type DSThrottlingConfig struct {
+	Enabled   bool
+	Frequency time.Duration
+	Threshold uint32
+}
+
 type Config struct {
 	// If you change any of these settings, please update the documentation at
 	// https://github.com/openfga/openfga.dev/blob/main/docs/content/intro/setup-openfga.mdx
@@ -244,6 +255,7 @@ type Config struct {
 	Metrics            MetricConfig
 	CheckQueryCache    CheckQueryCache
 	DispatchThrottling DispatchThrottlingConfig
+	DSThrottling       DSThrottlingConfig
 
 	RequestDurationDatastoreQueryCountBuckets []string
 	RequestDurationDispatchCountBuckets       []string
@@ -326,10 +338,19 @@ func (cfg *Config) Verify() error {
 
 	if cfg.DispatchThrottling.Enabled {
 		if cfg.DispatchThrottling.Frequency <= 0 {
-			return errors.New("dispatch throttling frequency must be non-negative time duration")
+			return errors.New("dispatch throttling frequency must be positive time duration")
 		}
 		if cfg.DispatchThrottling.Threshold <= 0 {
-			return errors.New("dispatch throttling threshold must be non-negative integer")
+			return errors.New("dispatch throttling threshold must be positive integer")
+		}
+	}
+
+	if cfg.DSThrottling.Enabled {
+		if cfg.DSThrottling.Frequency <= 0 {
+			return errors.New("datastore throttling frequency must be positive time duration")
+		}
+		if cfg.DSThrottling.Threshold <= 0 {
+			return errors.New("datastore throttling threshold must be positive integer")
 		}
 	}
 
@@ -413,6 +434,11 @@ func DefaultConfig() *Config {
 			Enabled:   DefaultDispatchThrottlingEnabled,
 			Frequency: DefaultDispatchThrottlingFrequency,
 			Threshold: DefaultDispatchThrottlingThreshold,
+		},
+		DSThrottling: DSThrottlingConfig{
+			Enabled:   DefaultDSThrottlingEnabled,
+			Frequency: DefaultDSThrottlingFrequency,
+			Threshold: DefaultDSThrottlingThreshold,
 		},
 	}
 }

@@ -144,6 +144,10 @@ type Server struct {
 	dispatchThrottlingCheckResolver *graph.DispatchThrottlingCheckResolver
 
 	datastoreThrottlingServer *storagewrappers.DatastoreThrottlingTupleReaderServer
+
+	dsThrottlingEnabled   bool
+	dsThrottlingFrequency time.Duration
+	dsThrottlingThreshold uint32
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -329,6 +333,35 @@ func WithDispatchThrottlingCheckResolverThreshold(threshold uint32) OpenFGAServi
 	}
 }
 
+// WithDSThrottlingEnabled defines whether it is desirable to throttle datastore query when a request incurs
+// large number of datastore query.
+// Enabling this feature will prioritize datastore query requiring less than the configured
+// threshold over requests whose datastore query that exceeds the configured threshold.
+func WithDSThrottlingEnabled(frequency time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.dsThrottlingFrequency = frequency
+	}
+}
+
+// WithDSThrottlingFrequency defines how frequent datastore query will be evaluated.
+// Frequency controls how frequently datastore query are evaluated to determine whether
+// it can be processed.
+// This value should not be too small (i.e., in the ns ranges) as i) there are limitation in timer resolution
+// and ii) very small value will result in a higher frequency of processing datastore query,
+// which diminishes the value of the throttling.
+func WithDSThrottlingFrequency(enabled bool) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.dsThrottlingEnabled = enabled
+	}
+}
+
+// WithDSThrottlingThreshold define the number of ds query to be throttled.
+func WithDSThrottlingThreshold(threshold uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.dsThrottlingThreshold = threshold
+	}
+}
+
 // MustNewServerWithOpts see NewServerWithOpts
 func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	s, err := NewServerWithOpts(opts...)
@@ -368,6 +401,10 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		dispatchThrottlingCheckResolverEnabled:   serverconfig.DefaultCheckQueryCacheEnable,
 		dispatchThrottlingCheckResolverFrequency: serverconfig.DefaultDispatchThrottlingFrequency,
 		dispatchThrottlingThreshold:              serverconfig.DefaultDispatchThrottlingThreshold,
+
+		dsThrottlingEnabled:   serverconfig.DefaultDSThrottlingEnabled,
+		dsThrottlingFrequency: serverconfig.DefaultDSThrottlingFrequency,
+		dsThrottlingThreshold: serverconfig.DefaultDSThrottlingThreshold,
 	}
 
 	for _, opt := range opts {
@@ -434,7 +471,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, fmt.Errorf("request duration by dispatch count buckets must not be empty")
 	}
 
-	s.datastoreThrottlingServer = storagewrappers.NewDatastoreThrottlingTupleReaderServer(20 * time.Millisecond)
+	if s.dsThrottlingEnabled {
+		s.datastoreThrottlingServer = storagewrappers.NewDatastoreThrottlingTupleReaderServer(s.dsThrottlingFrequency)
+	}
 
 	s.typesystemResolver, s.typesystemResolverStop = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
 
