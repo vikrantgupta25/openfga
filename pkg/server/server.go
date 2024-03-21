@@ -145,9 +145,9 @@ type Server struct {
 
 	datastoreThrottlingServer *storagewrappers.DatastoreThrottlingTupleReaderServer
 
-	dsThrottlingEnabled   bool
-	dsThrottlingFrequency time.Duration
-	dsThrottlingThreshold uint32
+	datastoreThrottlingEnabled   bool
+	datastoreThrottlingFrequency time.Duration
+	datastoreThrottlingThreshold uint32
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -333,32 +333,31 @@ func WithDispatchThrottlingCheckResolverThreshold(threshold uint32) OpenFGAServi
 	}
 }
 
-// WithDSThrottlingEnabled defines whether it is desirable to throttle datastore query when a request incurs
+// WithDatastoreThrottlingEnabled defines whether it is desirable to throttle datastore query when a request incurs
 // large number of datastore query.
 // Enabling this feature will prioritize datastore query requiring less than the configured
 // threshold over requests whose datastore query that exceeds the configured threshold.
-func WithDSThrottlingEnabled(frequency time.Duration) OpenFGAServiceV1Option {
+func WithDatastoreThrottlingEnabled(enabled bool) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.dsThrottlingFrequency = frequency
+		s.datastoreThrottlingEnabled = enabled
 	}
 }
 
-// WithDSThrottlingFrequency defines how frequent datastore query will be evaluated.
-// Frequency controls how frequently datastore query are evaluated to determine whether
-// it can be processed.
+// WithDatastoreThrottlingFrequency defines how frequent datastore query throttling will be evaluated
+// to determine whether it can be processed.
 // This value should not be too small (i.e., in the ns ranges) as i) there are limitation in timer resolution
 // and ii) very small value will result in a higher frequency of processing datastore query,
 // which diminishes the value of the throttling.
-func WithDSThrottlingFrequency(enabled bool) OpenFGAServiceV1Option {
+func WithDatastoreThrottlingFrequency(frequency time.Duration) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.dsThrottlingEnabled = enabled
+		s.datastoreThrottlingFrequency = frequency
 	}
 }
 
-// WithDSThrottlingThreshold define the number of ds query to be throttled.
-func WithDSThrottlingThreshold(threshold uint32) OpenFGAServiceV1Option {
+// WithDatastoreThrottlingThreshold define the number of ds query to be throttled.
+func WithDatastoreThrottlingThreshold(threshold uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.dsThrottlingThreshold = threshold
+		s.datastoreThrottlingThreshold = threshold
 	}
 }
 
@@ -402,9 +401,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		dispatchThrottlingCheckResolverFrequency: serverconfig.DefaultDispatchThrottlingFrequency,
 		dispatchThrottlingThreshold:              serverconfig.DefaultDispatchThrottlingThreshold,
 
-		dsThrottlingEnabled:   serverconfig.DefaultDSThrottlingEnabled,
-		dsThrottlingFrequency: serverconfig.DefaultDSThrottlingFrequency,
-		dsThrottlingThreshold: serverconfig.DefaultDSThrottlingThreshold,
+		datastoreThrottlingEnabled:   serverconfig.DefaultDatastoreThrottlingEnabled,
+		datastoreThrottlingFrequency: serverconfig.DefaultDatastoreThrottlingFrequency,
+		datastoreThrottlingThreshold: serverconfig.DefaultDatastoreThrottlingThreshold,
 	}
 
 	for _, opt := range opts {
@@ -471,8 +470,8 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, fmt.Errorf("request duration by dispatch count buckets must not be empty")
 	}
 
-	if s.dsThrottlingEnabled {
-		s.datastoreThrottlingServer = storagewrappers.NewDatastoreThrottlingTupleReaderServer(s.dsThrottlingFrequency)
+	if s.datastoreThrottlingEnabled {
+		s.datastoreThrottlingServer = storagewrappers.NewDatastoreThrottlingTupleReaderServer(s.datastoreThrottlingFrequency)
 	}
 
 	s.typesystemResolver, s.typesystemResolverStop = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
@@ -810,7 +809,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 				),
 				s.maxConcurrentReadsForCheck,
 			),
-			30,
+			s.datastoreThrottlingThreshold,
 			s.datastoreThrottlingServer),
 	)
 

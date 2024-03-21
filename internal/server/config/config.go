@@ -36,9 +36,9 @@ const (
 	DefaultDispatchThrottlingFrequency = 10 * time.Microsecond
 	DefaultDispatchThrottlingThreshold = 100
 
-	DefaultDSThrottlingEnabled   = false
-	DefaultDSThrottlingFrequency = 20 * time.Millisecond
-	DefaultDSThrottlingThreshold = 30
+	DefaultDatastoreThrottlingEnabled   = false
+	DefaultDatastoreThrottlingFrequency = 20 * time.Millisecond
+	DefaultDatastoreThrottlingThreshold = 30
 )
 
 type DatastoreMetricsConfig struct {
@@ -436,9 +436,9 @@ func DefaultConfig() *Config {
 			Threshold: DefaultDispatchThrottlingThreshold,
 		},
 		DSThrottling: DSThrottlingConfig{
-			Enabled:   DefaultDSThrottlingEnabled,
-			Frequency: DefaultDSThrottlingFrequency,
-			Threshold: DefaultDSThrottlingThreshold,
+			Enabled:   DefaultDatastoreThrottlingEnabled,
+			Frequency: DefaultDatastoreThrottlingFrequency,
+			Threshold: DefaultDatastoreThrottlingThreshold,
 		},
 	}
 }
