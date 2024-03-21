@@ -4,24 +4,21 @@ import (
 	"context"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-const dsThrottlingSpanAttribute = "ds_throttling"
+const dsThrottlingSpanAttribute = "ds_throttling_server"
 
 var _ storage.RelationshipTupleReader = (*datastoreThrottlingTupleReader)(nil)
 
 var (
 	dsThrottlingReadDelayMsHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace:                       build.ProjectName,
-		Name:                            "datastore_throttling_read_delay_ms",
+		Name:                            "datastore_throttling_server_read_delay_ms",
 		Help:                            "Time spent waiting for Read, ReadUserTuple and ReadUsersetTuples calls to the datastore due to throttling",
 		Buckets:                         []float64{1, 3, 5, 10, 25, 50, 100, 1000, 5000}, // Milliseconds. Upper bound is config.UpstreamTimeout.
 		NativeHistogramBucketFactor:     1.1,
@@ -85,6 +82,6 @@ func (r *DatastoreThrottlingTupleReaderServer) throttleQuery(ctx context.Context
 		rpcInfo.Method,
 	).Observe(float64(timeWaiting))
 
-	span := trace.SpanFromContext(ctx)
-	span.SetAttributes(attribute.Int64(dsThrottlingSpanAttribute, timeWaiting))
+	//span := trace.SpanFromContext(ctx)
+	//span.SetAttributes(attribute.Int64(dsThrottlingSpanAttribute, timeWaiting))
 }

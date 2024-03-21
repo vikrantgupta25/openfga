@@ -2,8 +2,11 @@ package storagewrappers
 
 import (
 	"context"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"fmt"
 	"sync/atomic"
+	"time"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/pkg/storage"
 )
@@ -69,22 +72,18 @@ func (r *datastoreThrottlingTupleReader) ReadUsersetTuples(
 func (r *datastoreThrottlingTupleReader) throttleQuery(ctx context.Context) error {
 	currentCount := r.readCounter.Add(1)
 	if currentCount > r.threshold && r.throttlingServer != nil {
-		/*
-			start := time.Now()
-			delta := (currentCount - r.threshold) / 5
-			numWait := min(2^delta, 3000)
-			for i := 0; i < int(numWait); i++ {
-				end := time.Now()
-				timeWaiting := end.Sub(start)
-				if timeWaiting < 3*time.Second {
-					r.throttlingServer.throttleQuery(ctx)
-				} else {
-					return fmt.Errorf("waiting too long")
-				}
+		start := time.Now()
+		delta := (currentCount - r.threshold) / 5
+		numWait := min(2^delta, 3000)
+		for i := 0; i < int(numWait); i++ {
+			end := time.Now()
+			timeWaiting := end.Sub(start)
+			if timeWaiting < 3*time.Second {
+				r.throttlingServer.throttleQuery(ctx)
+			} else {
+				return fmt.Errorf("waiting too long")
 			}
-		
-		*/
-		r.throttlingServer.throttleQuery(ctx)
+		}
 	}
 	return nil
 }
