@@ -145,9 +145,10 @@ type Server struct {
 
 	datastoreThrottlingServer *storagewrappers.DatastoreThrottlingTupleReaderServer
 
-	datastoreThrottlingEnabled   bool
-	datastoreThrottlingFrequency time.Duration
-	datastoreThrottlingThreshold uint32
+	datastoreThrottlingEnabled            bool
+	datastoreThrottlingFrequency          time.Duration
+	datastoreThrottlingThreshold          uint32
+	datastoreThrottlingExponentialBackoff bool
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -361,6 +362,13 @@ func WithDatastoreThrottlingThreshold(threshold uint32) OpenFGAServiceV1Option {
 	}
 }
 
+// WithDatastoreThrottlingExponentialBackoff defines whether to have exponential backoff
+func WithDatastoreThrottlingExponentialBackoff(backoff bool) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.datastoreThrottlingExponentialBackoff = backoff
+	}
+}
+
 // MustNewServerWithOpts see NewServerWithOpts
 func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	s, err := NewServerWithOpts(opts...)
@@ -401,9 +409,10 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		dispatchThrottlingCheckResolverFrequency: serverconfig.DefaultDispatchThrottlingFrequency,
 		dispatchThrottlingThreshold:              serverconfig.DefaultDispatchThrottlingThreshold,
 
-		datastoreThrottlingEnabled:   serverconfig.DefaultDatastoreThrottlingEnabled,
-		datastoreThrottlingFrequency: serverconfig.DefaultDatastoreThrottlingFrequency,
-		datastoreThrottlingThreshold: serverconfig.DefaultDatastoreThrottlingThreshold,
+		datastoreThrottlingEnabled:            serverconfig.DefaultDatastoreThrottlingEnabled,
+		datastoreThrottlingFrequency:          serverconfig.DefaultDatastoreThrottlingFrequency,
+		datastoreThrottlingThreshold:          serverconfig.DefaultDatastoreThrottlingThreshold,
+		datastoreThrottlingExponentialBackoff: serverconfig.DefaultDatastoreThrottlingExponentialBackoff,
 	}
 
 	for _, opt := range opts {
@@ -810,6 +819,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 				s.maxConcurrentReadsForCheck,
 			),
 			s.datastoreThrottlingThreshold,
+			s.datastoreThrottlingExponentialBackoff,
 			s.datastoreThrottlingServer),
 	)
 

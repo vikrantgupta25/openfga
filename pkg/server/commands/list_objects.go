@@ -151,6 +151,7 @@ func NewListObjectsQuery(
 			storagewrappers.NewBoundedConcurrencyTupleReader(
 				query.datastore, query.maxConcurrentReads),
 			30,
+			false,
 			nil, // TODO: implement for list object
 		)
 

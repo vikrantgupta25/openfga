@@ -36,9 +36,10 @@ const (
 	DefaultDispatchThrottlingFrequency = 10 * time.Microsecond
 	DefaultDispatchThrottlingThreshold = 100
 
-	DefaultDatastoreThrottlingEnabled   = false
-	DefaultDatastoreThrottlingFrequency = 20 * time.Millisecond
-	DefaultDatastoreThrottlingThreshold = 30
+	DefaultDatastoreThrottlingEnabled            = false
+	DefaultDatastoreThrottlingFrequency          = 20 * time.Millisecond
+	DefaultDatastoreThrottlingThreshold          = 30
+	DefaultDatastoreThrottlingExponentialBackoff = false
 )
 
 type DatastoreMetricsConfig struct {

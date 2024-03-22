@@ -2,6 +2,7 @@ package storagewrappers
 
 import (
 	"context"
+	"github.com/openfga/openfga/pkg/server/errors"
 	"time"
 
 	"github.com/openfga/openfga/internal/build"
@@ -70,17 +71,26 @@ func (r *DatastoreThrottlingTupleReaderServer) runTicker() {
 	}
 }
 
-func (r *DatastoreThrottlingTupleReaderServer) throttleQuery(ctx context.Context) {
+func (r *DatastoreThrottlingTupleReaderServer) throttleQuery(ctx context.Context) error {
 	start := time.Now()
-	<-r.throttlingQueue
-	end := time.Now()
-	timeWaiting := end.Sub(start).Milliseconds()
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
 
-	rpcInfo := telemetry.RPCInfoFromContext(ctx)
-	dsThrottlingReadDelayMsHistogram.WithLabelValues(
-		rpcInfo.Service,
-		rpcInfo.Method,
-	).Observe(float64(timeWaiting))
+	select {
+	case <-r.throttlingQueue:
+		end := time.Now()
+		timeWaiting := end.Sub(start).Milliseconds()
+
+		rpcInfo := telemetry.RPCInfoFromContext(ctx)
+		dsThrottlingReadDelayMsHistogram.WithLabelValues(
+			rpcInfo.Service,
+			rpcInfo.Method,
+		).Observe(float64(timeWaiting))
+		return nil
+	case <-ctx.Done():
+		return errors.AuthorizationModelResolutionTooComplex
+	}
 
 	//span := trace.SpanFromContext(ctx)
 	//span.SetAttributes(attribute.Int64(dsThrottlingSpanAttribute, timeWaiting))

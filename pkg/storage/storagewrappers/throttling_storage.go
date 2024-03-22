@@ -2,7 +2,7 @@ package storagewrappers
 
 import (
 	"context"
-	"fmt"
+	"github.com/openfga/openfga/pkg/server/errors"
 	"sync/atomic"
 	"time"
 
@@ -15,18 +15,21 @@ var _ storage.RelationshipTupleReader = (*datastoreThrottlingTupleReader)(nil)
 
 type datastoreThrottlingTupleReader struct {
 	storage.RelationshipTupleReader
-	throttlingServer *DatastoreThrottlingTupleReaderServer
-	readCounter      *atomic.Uint32
-	threshold        uint32
+	throttlingServer   *DatastoreThrottlingTupleReaderServer
+	readCounter        *atomic.Uint32
+	threshold          uint32
+	exponentialBackoff bool
 }
 
 func NewDatastoreThrottlingTupleReader(wrapped storage.RelationshipTupleReader,
 	threshold uint32,
+	exponentialBackoff bool,
 	throttlingServer *DatastoreThrottlingTupleReaderServer) *datastoreThrottlingTupleReader {
 	ds := &datastoreThrottlingTupleReader{
 		RelationshipTupleReader: wrapped,
 		readCounter:             new(atomic.Uint32),
 		threshold:               threshold,
+		exponentialBackoff:      exponentialBackoff,
 		throttlingServer:        throttlingServer,
 	}
 	return ds
@@ -73,16 +76,23 @@ func (r *datastoreThrottlingTupleReader) throttleQuery(ctx context.Context) erro
 	currentCount := r.readCounter.Add(1)
 	if currentCount > r.threshold && r.throttlingServer != nil {
 		start := time.Now()
-		delta := (currentCount - r.threshold) / 5
-		numWait := min(2^delta, 3000)
-		for i := 0; i < int(numWait); i++ {
-			end := time.Now()
-			timeWaiting := end.Sub(start)
-			if timeWaiting < 3*time.Second {
-				r.throttlingServer.throttleQuery(ctx)
-			} else {
-				return fmt.Errorf("waiting too long")
+		if r.exponentialBackoff {
+			delta := (currentCount - r.threshold) / 5
+			numWait := min(2^delta, 3000)
+			for i := 0; i < int(numWait); i++ {
+				end := time.Now()
+				timeWaiting := end.Sub(start)
+				if timeWaiting < 3*time.Second {
+					err := r.throttlingServer.throttleQuery(ctx)
+					if err != nil {
+						return err
+					}
+				} else {
+					return errors.AuthorizationModelResolutionTooComplex
+				}
 			}
+		} else {
+			return r.throttlingServer.throttleQuery(ctx)
 		}
 	}
 	return nil
