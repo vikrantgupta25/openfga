@@ -370,12 +370,16 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 		}
 	}
 
+	if err != nil {
+		return nil, err
+	}
+
 	return &ResolveCheckResponse{
 		Allowed: true,
 		ResolutionMetadata: &ResolveCheckResponseMetadata{
 			DatastoreQueryCount: dbReads,
 		},
-	}, err
+	}, nil
 }
 
 // exclusion implements a CheckFuncReducer that requires a 'base' CheckHandlerFunc to resolve to an allowed
@@ -479,7 +483,12 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 				return response, nil
 			}
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: dbReads,
+				},
+			}, ctx.Err()
 		}
 	}
 
@@ -487,7 +496,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 		return &ResolveCheckResponse{
 			Allowed: false,
 			ResolutionMetadata: &ResolveCheckResponseMetadata{
-				DatastoreQueryCount: 0,
+				DatastoreQueryCount: dbReads,
 			},
 		}, errors.Join(baseErr, subErr)
 	}
@@ -515,7 +524,7 @@ func (c *LocalChecker) dispatch(_ context.Context, parentReq *ResolveCheckReques
 
 		resp, err := c.delegate.ResolveCheck(ctx, childRequest)
 		if err != nil {
-			return resp, err
+			return nil, err
 		}
 		return resp, nil
 	}
@@ -614,7 +623,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 					return response, nil
 				}
 
-				return response, err
+				return nil, err
 			}
 
 			// filter out invalid tuples yielded by the database query
@@ -669,7 +678,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				AllowedUserTypeRestrictions: directlyRelatedUsersetTypes,
 			})
 			if err != nil {
-				return response, err
+				return nil, err
 			}
 			defer iter.Stop()
 
@@ -689,7 +698,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 						break
 					}
 
-					return response, err
+					return nil, err
 				}
 
 				condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, req.GetContext())
@@ -833,19 +842,13 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		span.SetAttributes(attribute.String("tupleset_relation", fmt.Sprintf("%s#%s", tuple.GetType(object), tuplesetRelation)))
 		span.SetAttributes(attribute.String("computed_relation", computedRelation))
 
-		response := &ResolveCheckResponse{
-			Allowed: false,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{
-				DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
-			},
-		}
 		iter, err := ds.Read(
 			ctx,
 			req.GetStoreID(),
 			tuple.NewTupleKey(object, tuplesetRelation, ""),
 		)
 		if err != nil {
-			return response, err
+			return nil, err
 		}
 		defer iter.Stop()
 
@@ -865,7 +868,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 					break
 				}
 
-				return response, err
+				return nil, err
 			}
 
 			condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, req.GetContext())
