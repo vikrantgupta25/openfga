@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/openfga/openfga/internal/build"
+	"github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/telemetry"
 )
 
@@ -93,16 +94,27 @@ func (r *DispatchThrottlingCheckResolver) runTicker() {
 	}
 }
 
+func (r *DispatchThrottlingCheckResolver) waitForThrottle(ctx context.Context) (int64, error) {
+	start := time.Now()
+	select {
+	case <-r.throttlingQueue:
+		end := time.Now()
+		return end.Sub(start).Milliseconds(), nil
+	case <-ctx.Done():
+		return 0, errors.DispatchThrottleContextDeadline
+	}
+}
+
 func (r *DispatchThrottlingCheckResolver) ResolveCheck(ctx context.Context,
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
 	currentNumDispatch := req.GetRequestMetadata().DispatchCounter.Load()
 
 	if currentNumDispatch > r.config.Threshold {
-		start := time.Now()
-		<-r.throttlingQueue
-		end := time.Now()
-		timeWaiting := end.Sub(start).Milliseconds()
+		timeWaiting, err := r.waitForThrottle(ctx)
+		if err != nil {
+			return nil, err
+		}
 
 		rpcInfo := telemetry.RPCInfoFromContext(ctx)
 		dispatchThrottlingResolverDelayMsHistogram.WithLabelValues(
