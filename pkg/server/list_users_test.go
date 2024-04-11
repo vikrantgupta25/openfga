@@ -14,7 +14,6 @@ import (
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
-	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 func TestListUsersValidation(t *testing.T) {
@@ -144,6 +143,11 @@ func TestListUsersValidation(t *testing.T) {
 		},
 	}
 
+	s := MustNewServerWithOpts(
+		WithDatastore(memory.New()),
+	)
+	t.Cleanup(s.Close)
+
 	storeID := ulid.Make().String()
 	for _, test := range tests {
 		ds := memory.New()
@@ -151,16 +155,13 @@ func TestListUsersValidation(t *testing.T) {
 		model := testutils.MustTransformDSLToProtoWithID(test.model)
 
 		t.Run(test.name, func(t *testing.T) {
-			typesys, err := typesystem.NewAndValidate(context.Background(), model)
-			require.NoError(t, err)
-
-			err = ds.WriteAuthorizationModel(context.Background(), storeID, model)
+			err := ds.WriteAuthorizationModel(context.Background(), storeID, model)
 			require.NoError(t, err)
 
 			test.req.AuthorizationModelId = model.GetId()
 			test.req.StoreId = storeID
 
-			_, err = ListUsers(typesys, ds, context.Background(), test.req)
+			_, err = s.ListUsers(context.Background(), test.req)
 			e, ok := status.FromError(err)
 			require.True(t, ok)
 			require.Equal(t, test.expectedErrorCode, e.Code())

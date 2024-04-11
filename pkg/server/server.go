@@ -22,8 +22,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/openfga/openfga/internal/server"
-
 	"github.com/openfga/openfga/pkg/gateway"
 
 	"github.com/openfga/openfga/internal/build"
@@ -649,17 +647,6 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return nil
-}
-
-func (s *Server) ListUsers(
-	ctx context.Context,
-	req *openfgav1.ListUsersRequest,
-) (*openfgav1.ListUsersResponse, error) {
-	typesys, err := s.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
-	if err != nil {
-		return nil, err
-	}
-	return server.ListUsers(typesys, s.datastore, ctx, req)
 }
 
 // func (s *Server) StreamedListUsers(
