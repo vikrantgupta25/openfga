@@ -49,10 +49,8 @@ var _ storage.OpenFGADatastore = (*Postgres)(nil)
 // Ensures that PostgresDriver implements the OpenFGADatastoreDriver interface.
 var _ storage.OpenFGADatastoreDriver = (*PostgresDriver)(nil)
 
-var postgresDriver storage.OpenFGADatastoreDriver
-
 func init() {
-	storage.Register("postgres", postgresDriver)
+	storage.Register("postgres", &PostgresDriver{})
 }
 
 // Open implements storage.OpenFGADatastoreDriver.

@@ -28,10 +28,8 @@ type staticIterator struct {
 	mu                sync.Mutex
 }
 
-var memoryDriver storage.OpenFGADatastoreDriver
-
 func init() {
-	storage.Register("memory", memoryDriver)
+	storage.Register("memory", &MemoryDriver{})
 }
 
 // match returns true if all the fields in t [*storage.TupleRecord] are equal to

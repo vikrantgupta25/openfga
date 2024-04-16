@@ -81,6 +81,8 @@ func NewRunCommand() *cobra.Command {
 	defaultConfig := serverconfig.DefaultConfig()
 	flags := cmd.Flags()
 
+	flags.String("plugins", defaultConfig.PluginsPath, "the absolute file path to load plugins from")
+
 	flags.StringSlice("experimentals", defaultConfig.Experimentals, "a list of experimental features to enable")
 
 	flags.String("grpc-addr", defaultConfig.GRPC.Addr, "the host:port address to serve the grpc server on")
