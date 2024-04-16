@@ -41,8 +41,24 @@ type Postgres struct {
 	maxTypesPerModelField  int
 }
 
+type PostgresDriver struct{}
+
 // Ensures that Postgres implements the OpenFGADatastore interface.
 var _ storage.OpenFGADatastore = (*Postgres)(nil)
+
+// Ensures that PostgresDriver implements the OpenFGADatastoreDriver interface.
+var _ storage.OpenFGADatastoreDriver = (*PostgresDriver)(nil)
+
+var postgresDriver storage.OpenFGADatastoreDriver
+
+func init() {
+	storage.Register("postgres", postgresDriver)
+}
+
+// Open implements storage.OpenFGADatastoreDriver.
+func (p *PostgresDriver) Open(uri string) (storage.OpenFGADatastore, error) {
+	return New(uri, &sqlcommon.Config{})
+}
 
 // New creates a new [Postgres] storage.
 func New(uri string, cfg *sqlcommon.Config) (*Postgres, error) {

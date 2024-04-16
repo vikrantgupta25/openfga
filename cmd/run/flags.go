@@ -11,6 +11,9 @@ import (
 // by viper. This bridges the config between cobra flags and viper flags.
 func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 	return func(command *cobra.Command, args []string) {
+		util.MustBindPFlag("plugins", flags.Lookup("plugins"))
+		util.MustBindEnv("plugins", "OPENFGA_PLUGINS")
+
 		util.MustBindPFlag("experimentals", flags.Lookup("experimentals"))
 		util.MustBindEnv("experimentals", "OPENFGA_EXPERIMENTALS")
 

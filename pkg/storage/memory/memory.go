@@ -28,6 +28,12 @@ type staticIterator struct {
 	mu                sync.Mutex
 }
 
+var memoryDriver storage.OpenFGADatastoreDriver
+
+func init() {
+	storage.Register("memory", memoryDriver)
+}
+
 // match returns true if all the fields in t [*storage.TupleRecord] are equal to
 // the same field in the target [*openfgav1.TupleKey]. If the input Object
 // doesn't specify an ID, only the Object Types are compared. If a field
@@ -124,14 +130,23 @@ type MemoryBackend struct {
 	assertions map[string][]*openfgav1.Assertion // GUARDED_BY(mu_).
 }
 
+type MemoryDriver struct{}
+
 // Ensures that [MemoryBackend] implements the [storage.OpenFGADatastore] interface.
 var _ storage.OpenFGADatastore = (*MemoryBackend)(nil)
+
+var _ storage.OpenFGADatastoreDriver = (*MemoryDriver)(nil)
 
 // AuthorizationModelEntry represents an entry in a storage system
 // that holds information about an authorization model.
 type AuthorizationModelEntry struct {
 	model  *openfgav1.AuthorizationModel
 	latest bool
+}
+
+// Open implements storage.OpenFGADatastoreDriver.
+func (m *MemoryDriver) Open(uri string) (storage.OpenFGADatastore, error) {
+	return New(), nil
 }
 
 // New creates a new [MemoryBackend] given the options.

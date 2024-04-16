@@ -40,8 +40,23 @@ type MySQL struct {
 	maxTypesPerModelField  int
 }
 
+type MySQLDriver struct{}
+
 // Ensures that MySQL implements the OpenFGADatastore interface.
 var _ storage.OpenFGADatastore = (*MySQL)(nil)
+
+var _ storage.OpenFGADatastoreDriver = (*MySQLDriver)(nil)
+
+var mysqlDriver storage.OpenFGADatastoreDriver
+
+func init() {
+	storage.Register("mysql", &MySQLDriver{})
+}
+
+// Open implements storage.OpenFGADatastoreDriver.
+func (m *MySQLDriver) Open(uri string) (storage.OpenFGADatastore, error) {
+	return New(uri, &sqlcommon.Config{})
+}
 
 // New creates a new [MySQL] storage.
 func New(uri string, cfg *sqlcommon.Config) (*MySQL, error) {

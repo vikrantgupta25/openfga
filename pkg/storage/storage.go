@@ -4,9 +4,17 @@ package storage
 
 import (
 	"context"
+	"fmt"
+	"sort"
+	"sync"
 	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+)
+
+var (
+	driversMu sync.RWMutex
+	drivers   = make(map[string]OpenFGADatastoreDriver)
 )
 
 type ctxKey string
@@ -32,6 +40,44 @@ const (
 
 	relationshipTupleReaderCtxKey ctxKey = "relationship-tuple-reader-context-key"
 )
+
+// Register makes an OpenFGADriver available by the provided name.
+// If Register is called twice with the same name or if driver is nil,
+// it panics.
+func Register(name string, driver OpenFGADatastoreDriver) {
+	driversMu.Lock()
+	defer driversMu.Unlock()
+	if driver == nil {
+		panic("storage: Register driver is nil")
+	}
+	if _, dup := drivers[name]; dup {
+		panic("storage: Register called twice for driver " + name)
+	}
+	drivers[name] = driver
+}
+
+// Drivers returns a sorted list of the names of the registered drivers.
+func Drivers() []string {
+	driversMu.RLock()
+	defer driversMu.RUnlock()
+	list := make([]string, 0, len(drivers))
+	for name := range drivers {
+		list = append(list, name)
+	}
+	sort.Strings(list)
+	return list
+}
+
+func Open(driverName, dataSourceName string) (OpenFGADatastore, error) {
+	driversMu.RLock()
+	driveri, ok := drivers[driverName]
+	driversMu.RUnlock()
+	if !ok {
+		return nil, fmt.Errorf("storage: unknown datastore driver %q", driverName)
+	}
+
+	return driveri.Open(dataSourceName)
+}
 
 // ContextWithRelationshipTupleReader sets the provided [[RelationshipTupleReader]]
 // in the context. The context returned is a new context derived from the parent

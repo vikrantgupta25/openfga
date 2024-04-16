@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	goruntime "runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -40,6 +41,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/openfga/openfga/pkg/gateway"
+	"github.com/openfga/openfga/pkg/plugin"
 
 	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/internal/authn"
@@ -58,10 +60,6 @@ import (
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/health"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/memory"
-	"github.com/openfga/openfga/pkg/storage/mysql"
-	"github.com/openfga/openfga/pkg/storage/postgres"
-	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/telemetry"
 )
@@ -311,7 +309,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		experimentals = append(experimentals, server.ExperimentalFeatureFlag(feature))
 	}
 
-	datastoreOptions := []sqlcommon.DatastoreOption{
+	/*datastoreOptions := []sqlcommon.DatastoreOption{
 		sqlcommon.WithUsername(config.Datastore.Username),
 		sqlcommon.WithPassword(config.Datastore.Password),
 		sqlcommon.WithLogger(s.Logger),
@@ -327,11 +325,29 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		datastoreOptions = append(datastoreOptions, sqlcommon.WithMetrics())
 	}
 
-	dsCfg := sqlcommon.NewConfig(datastoreOptions...)
+	dsCfg := sqlcommon.NewConfig(datastoreOptions...)*/
+
+	if config.PluginsPath != "" {
+		s.Logger.Info(fmt.Sprintf("loading plugins from '%s'...", config.PluginsPath))
+
+		if _, err := plugin.LoadPlugins(config.PluginsPath); err != nil {
+			return fmt.Errorf("plugin initialization failed: %w", err)
+		}
+	}
 
 	var datastore storage.OpenFGADatastore
 	var err error
-	switch config.Datastore.Engine {
+
+	if !slices.Contains(storage.Drivers(), config.Datastore.Engine) {
+		return fmt.Errorf("datastore engine '%s' not registered", config.Datastore.Engine)
+	}
+
+	datastore, err = storage.Open(config.Datastore.Engine, config.Datastore.URI)
+	if err != nil {
+		return fmt.Errorf("datastore initialization failed with error: %w", err)
+	}
+
+	/*switch config.Datastore.Engine {
 	case "memory":
 		opts := []memory.StorageOption{
 			memory.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
@@ -350,7 +366,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		}
 	default:
 		return fmt.Errorf("storage engine '%s' is unsupported", config.Datastore.Engine)
-	}
+	}*/
 	datastore = storagewrappers.NewCachedOpenFGADatastore(storagewrappers.NewContextWrapper(datastore), config.Datastore.MaxCacheSize)
 
 	s.Logger.Info(fmt.Sprintf("using '%v' storage engine", config.Datastore.Engine))

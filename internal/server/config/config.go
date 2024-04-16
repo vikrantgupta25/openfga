@@ -35,6 +35,8 @@ const (
 	DefaultDispatchThrottlingEnabled   = false
 	DefaultDispatchThrottlingFrequency = 10 * time.Microsecond
 	DefaultDispatchThrottlingThreshold = 100
+
+	DefaultPluginsPath = ""
 )
 
 type DatastoreMetricsConfig struct {
@@ -233,6 +235,10 @@ type Config struct {
 	// concurrently in a query
 	ResolveNodeBreadthLimit uint32
 
+	// An absolute file path to the directory storing OpenFGA plugins to register
+	// on startup.
+	PluginsPath string `mapstructure:"plugins"`
+
 	Datastore          DatastoreConfig
 	GRPC               GRPCConfig
 	HTTP               HTTPConfig
@@ -347,6 +353,7 @@ func DefaultConfig() *Config {
 		ChangelogHorizonOffset:                    DefaultChangelogHorizonOffset,
 		ResolveNodeLimit:                          DefaultResolveNodeLimit,
 		ResolveNodeBreadthLimit:                   DefaultResolveNodeBreadthLimit,
+		PluginsPath:                               "",
 		Experimentals:                             []string{},
 		ListObjectsDeadline:                       DefaultListObjectsDeadline,
 		ListObjectsMaxResults:                     DefaultListObjectsMaxResults,
