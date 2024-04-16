@@ -396,6 +396,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 			Frequency:    s.dispatchThrottlingCheckResolverFrequency,
 			Threshold:    s.dispatchThrottlingThreshold,
 			MaxThreshold: s.dispatchThrottlingMaxThreshold,
+			Logger:       s.logger,
 		}
 
 		s.logger.Info("Enabling dispatch throttling",

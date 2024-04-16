@@ -2,6 +2,8 @@ package graph
 
 import (
 	"context"
+	"github.com/openfga/openfga/pkg/logger"
+	"go.uber.org/zap"
 	"time"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
@@ -17,6 +19,7 @@ type DispatchThrottlingCheckResolverConfig struct {
 	Frequency    time.Duration
 	Threshold    uint32
 	MaxThreshold uint32
+	Logger       logger.Logger
 }
 
 // DispatchThrottlingCheckResolver will prioritize requests with fewer dispatches over
@@ -109,6 +112,7 @@ func (r *DispatchThrottlingCheckResolver) ResolveCheck(ctx context.Context,
 			threshold = min(uint32(thresholdInInt), r.config.MaxThreshold)
 		}
 	}
+	r.config.Logger.Info("use threshold ", zap.Uint32("threshold", threshold))
 
 	if currentNumDispatch > threshold {
 		grpc_ctxtags.Extract(ctx).Set(telemetry.Throttled, true)
