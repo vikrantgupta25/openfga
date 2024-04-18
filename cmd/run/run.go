@@ -12,7 +12,6 @@ import (
 	"os"
 	"os/signal"
 	goruntime "runtime"
-	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -53,6 +52,7 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
 	"github.com/openfga/openfga/pkg/middleware/logging"
+	"github.com/openfga/openfga/pkg/middleware/registry"
 	"github.com/openfga/openfga/pkg/middleware/requestid"
 	"github.com/openfga/openfga/pkg/middleware/storeid"
 	"github.com/openfga/openfga/pkg/middleware/validator"
@@ -329,51 +329,28 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	dsCfg := sqlcommon.NewConfig(datastoreOptions...)*/
 
-	if config.PluginsPath != "" {
-		s.Logger.Info(fmt.Sprintf("loading plugins from '%s'...", config.PluginsPath))
+	registry.RegisterUnaryServerInterceptors(
+		grpc_ctxtags.UnaryServerInterceptor(),   // needed for logging
+		requestid.NewUnaryInterceptor(),         // add request_id to ctxtags
+		storeid.NewUnaryInterceptor(),           // if available, add store_id to ctxtags
+		logging.NewLoggingInterceptor(s.Logger), // needed to log invalid requests
+		validator.UnaryServerInterceptor(),
+	)
 
-		if _, err := plugin.LoadPlugins(config.PluginsPath); err != nil {
-			return fmt.Errorf("plugin initialization failed: %w", err)
+	if config.Metrics.Enabled {
+		registry.RegisterUnaryServerInterceptors(grpc_prometheus.UnaryServerInterceptor)
+
+		// serverOpts = append(serverOpts,
+		// grpc.ChainUnaryInterceptor(grpc_prometheus.UnaryServerInterceptor),
+		// grpc.ChainStreamInterceptor(grpc_prometheus.StreamServerInterceptor))
+
+		if config.Metrics.EnableRPCHistograms {
+			grpc_prometheus.EnableHandlingTimeHistogram()
 		}
 	}
-
-	var datastore storage.OpenFGADatastore
-	var err error
-
-	if !slices.Contains(storage.Drivers(), config.Datastore.Engine) {
-		return fmt.Errorf("datastore engine '%s' not registered", config.Datastore.Engine)
-	}
-
-	datastore, err = storage.Open(config.Datastore.Engine, config.Datastore.URI)
-	if err != nil {
-		return fmt.Errorf("datastore initialization failed with error: %w", err)
-	}
-
-	/*switch config.Datastore.Engine {
-	case "memory":
-		opts := []memory.StorageOption{
-			memory.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
-			memory.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
-		}
-		datastore = memory.New(opts...)
-	case "mysql":
-		datastore, err = mysql.New(config.Datastore.URI, dsCfg)
-		if err != nil {
-			return fmt.Errorf("initialize mysql datastore: %w", err)
-		}
-	case "postgres":
-		datastore, err = postgres.New(config.Datastore.URI, dsCfg)
-		if err != nil {
-			return fmt.Errorf("initialize postgres datastore: %w", err)
-		}
-	default:
-		return fmt.Errorf("storage engine '%s' is unsupported", config.Datastore.Engine)
-	}*/
-	datastore = storagewrappers.NewCachedOpenFGADatastore(storagewrappers.NewContextWrapper(datastore), config.Datastore.MaxCacheSize)
-
-	s.Logger.Info(fmt.Sprintf("using '%v' storage engine", config.Datastore.Engine))
 
 	var authenticator authn.Authenticator
+	var err error
 	switch config.Authn.Method {
 	case "none":
 		s.Logger.Warn("authentication is disabled")
@@ -391,34 +368,48 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		return fmt.Errorf("failed to initialize authenticator: %w", err)
 	}
 
-	serverOpts := []grpc.ServerOption{
-		grpc.MaxRecvMsgSize(serverconfig.DefaultMaxRPCMessageSizeInBytes),
-		grpc.ChainUnaryInterceptor(
-			[]grpc.UnaryServerInterceptor{
-				grpc_ctxtags.UnaryServerInterceptor(),   // needed for logging
-				requestid.NewUnaryInterceptor(),         // add request_id to ctxtags
-				storeid.NewUnaryInterceptor(),           // if available, add store_id to ctxtags
-				logging.NewLoggingInterceptor(s.Logger), // needed to log invalid requests
-				validator.UnaryServerInterceptor(),
-			}...,
-		),
-		grpc.ChainStreamInterceptor(
-			[]grpc.StreamServerInterceptor{
-				requestid.NewStreamingInterceptor(),
-				validator.StreamServerInterceptor(),
-				grpc_ctxtags.StreamServerInterceptor(),
-			}...,
-		),
+	registry.RegisterUnaryServerInterceptors(
+		grpcauth.UnaryServerInterceptor(authnmw.AuthFunc(authenticator)),
+	)
+
+	if config.PluginsPath != "" {
+		s.Logger.Info(fmt.Sprintf("loading plugins from '%s'...", config.PluginsPath))
+
+		if _, err := plugin.LoadPlugins(config.PluginsPath); err != nil {
+			return fmt.Errorf("plugin initialization failed: %w", err)
+		}
 	}
 
-	if config.Metrics.Enabled {
-		serverOpts = append(serverOpts,
-			grpc.ChainUnaryInterceptor(grpc_prometheus.UnaryServerInterceptor),
-			grpc.ChainStreamInterceptor(grpc_prometheus.StreamServerInterceptor))
+	datastore, err := storage.Open(config.Datastore.Engine, config.Datastore.URI)
+	if err != nil {
+		return fmt.Errorf("datastore initialization failed with error: %w", err)
+	}
 
-		if config.Metrics.EnableRPCHistograms {
-			grpc_prometheus.EnableHandlingTimeHistogram()
-		}
+	datastore = storagewrappers.NewCachedOpenFGADatastore(storagewrappers.NewContextWrapper(datastore), config.Datastore.MaxCacheSize)
+
+	s.Logger.Info(fmt.Sprintf("using '%v' storage engine", config.Datastore.Engine))
+
+	serverOpts := []grpc.ServerOption{
+		grpc.MaxRecvMsgSize(serverconfig.DefaultMaxRPCMessageSizeInBytes),
+		// grpc.ChainUnaryInterceptor(
+		// 	[]grpc.UnaryServerInterceptor{
+		// 		// panic middleware
+		// 		grpc_ctxtags.UnaryServerInterceptor(),   // needed for logging
+		// 		requestid.NewUnaryInterceptor(),         // add request_id to ctxtags
+		// 		storeid.NewUnaryInterceptor(),           // if available, add store_id to ctxtags
+		// 		logging.NewLoggingInterceptor(s.Logger), // needed to log invalid requests
+		// 		validator.UnaryServerInterceptor(),
+		// 		// metrics (configurable)
+		// 		// auth (configurable)
+		// 	}...,
+		// ),
+		// grpc.ChainStreamInterceptor(
+		// 	[]grpc.StreamServerInterceptor{
+		// 		requestid.NewStreamingInterceptor(),
+		// 		validator.StreamServerInterceptor(),
+		// 		grpc_ctxtags.StreamServerInterceptor(),
+		// 	}...,
+		// ),
 	}
 
 	if config.Trace.Enabled {
@@ -426,19 +417,22 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	}
 
 	serverOpts = append(serverOpts, grpc.ChainUnaryInterceptor(
-		[]grpc.UnaryServerInterceptor{
-			grpcauth.UnaryServerInterceptor(authnmw.AuthFunc(authenticator)),
-		}...),
-		grpc.ChainStreamInterceptor(
-			[]grpc.StreamServerInterceptor{
-				grpcauth.StreamServerInterceptor(authnmw.AuthFunc(authenticator)),
-				// The following interceptors wrap the server stream with our own
-				// wrapper and must come last.
-				storeid.NewStreamingInterceptor(),
-				logging.NewStreamingLoggingInterceptor(s.Logger),
-			}...,
-		),
-	)
+		registry.RegisteredUnaryServerInterceptors()...,
+	))
+	// serverOpts = append(serverOpts, grpc.ChainUnaryInterceptor(
+	// 	[]grpc.UnaryServerInterceptor{
+	// 		grpcauth.UnaryServerInterceptor(authnmw.AuthFunc(authenticator)),
+	// 	}...),
+	// grpc.ChainStreamInterceptor(
+	// 	[]grpc.StreamServerInterceptor{
+	// 		grpcauth.StreamServerInterceptor(authnmw.AuthFunc(authenticator)),
+	// 		// The following interceptors wrap the server stream with our own
+	// 		// wrapper and must come last.
+	// 		storeid.NewStreamingInterceptor(),
+	// 		logging.NewStreamingLoggingInterceptor(s.Logger),
+	// 	}...,
+	// ),
+	// )
 
 	if config.GRPC.TLS.Enabled {
 		if config.GRPC.TLS.CertPath == "" || config.GRPC.TLS.KeyPath == "" {

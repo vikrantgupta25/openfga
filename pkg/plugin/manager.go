@@ -8,12 +8,14 @@ import (
 	"strings"
 	"sync"
 
+	"google.golang.org/grpc"
+
+	"github.com/openfga/openfga/pkg/middleware/registry"
 	"github.com/openfga/openfga/pkg/storage"
 )
 
-// PluginManager needs to provide a way to:
-// 1. discover plugins (datastore, middleware, etc..)
-// 2. register the middleware so the main app is aware of it
+// PluginManager provides a mechanism to discover and register
+// OpenFGA runtime plugins.
 type PluginManager struct {
 	datastoreRegisterOnce sync.Once
 }
@@ -59,5 +61,12 @@ func (p *PluginManager) RegisterOpenFGADatastore(
 		storage.Register(engine, driver)
 	})
 
+	return nil
+}
+
+func (p *PluginManager) RegisterUnaryServerInterceptors(
+	interceptors ...grpc.UnaryServerInterceptor,
+) error {
+	registry.RegisterUnaryServerInterceptors(interceptors...)
 	return nil
 }
