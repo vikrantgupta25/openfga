@@ -499,6 +499,35 @@
                     "x-env-variable": "OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_THRESHOLD"
                 }
             }
+        },
+        "datastoreThrottling": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "enable throttling when number of datastore query is high",
+                    "type": "bool",
+                    "default": "false",
+                    "x-env-variable": "OPENFGA_DATASTORE_THROTTLING_ENABLED"
+                },
+                "frequency": {
+                    "description": "the frequency period that the deprioritized datastore query is evaluated. A lower value will result in more aggressive throttling",
+                    "type": "duration",
+                    "default": "10µs",
+                    "x-env-variable": "OPENFGA_DATASTORE_THROTTLING_FREQUENCY"
+                },
+                "defaultThreshold": {
+                    "description": "define the number of datastore query to occur before getting throttled",
+                    "type": "integer",
+                    "default": "100",
+                    "x-env-variable": "OPENFGA_DATASTORE_DEFAULT_THRESHOLD"
+                },
+                "maxThreshold": {
+                    "description": "define the maximum number of datastore query to occur before getting throttled",
+                    "type": "integer",
+                    "default": "0",
+                    "x-env-variable": "OPENFGA_DATASTORE_MAX_THRESHOLD"
+                }
+            }
         }
     },
     "definitions": {

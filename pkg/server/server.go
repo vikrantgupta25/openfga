@@ -147,6 +147,12 @@ type Server struct {
 	dispatchThrottlingCheckResolver *graph.DispatchThrottlingCheckResolver
 
 	listObjectsDispatchThrottler throttler.Throttler
+
+	datastoreThrottlingEnabled          bool
+	datastoreThrottlingFrequency        time.Duration
+	datastoreThrottlingDefaultThreshold uint32
+	datastoreThrottlingMaxThreshold     uint32
+	datastoreThrottler                  throttler.Throttler
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -374,6 +380,42 @@ func WithListObjectsDispatchThrottlingThreshold(threshold uint32) OpenFGAService
 	}
 }
 
+// WithDatastoreThrottlingEnabled sets whether datastore throttling is enabled.
+// Enabling this feature will prioritize requests requiring less datastore query than the configured
+// threshold over requests whose number of datastore query count exceeds the configured threshold.
+func WithDatastoreThrottlingEnabled(enabled bool) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.datastoreThrottlingEnabled = enabled
+	}
+}
+
+// WithDatastoreThrottlingFrequency defines how frequent datastore throttling
+// will be evaluated.
+// Frequency controls how frequently throttled datastore requests are evaluated to determine whether
+// it can be processed.
+// This value should not be too small (i.e., in the ns ranges) as i) there are limitation in timer resolution
+// and ii) very small value will result in a higher frequency of processing dispatches,
+// which diminishes the value of the throttling.
+func WithDatastoreThrottlingFrequency(frequency time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.datastoreThrottlingFrequency = frequency
+	}
+}
+
+// WithDatastoreThrottlingDefaultThreshold define the default number of datastore requests to be throttled.
+func WithDatastoreThrottlingDefaultThreshold(defaultThreshold uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.datastoreThrottlingDefaultThreshold = defaultThreshold
+	}
+}
+
+// WithDatastoreThrottlingMaxThreshold define the max number of datastore requests to be throttled.
+func WithDatastoreThrottlingMaxThreshold(maxThreshold uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.datastoreThrottlingMaxThreshold = maxThreshold
+	}
+}
+
 // NewServerWithOpts returns a new server.
 // You must call Close on it after you are done using it.
 func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
@@ -407,6 +449,12 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		listObjectsDispatchThrottlingEnabled:   serverconfig.DefaultListObjectsDispatchThrottlingEnabled,
 		listObjectsDispatchThrottlingFrequency: serverconfig.DefaultListObjectsDispatchThrottlingFrequency,
 		listObjectsDispatchThrottlingThreshold: serverconfig.DefaultListObjectsDispatchThrottlingThreshold,
+
+		datastoreThrottlingEnabled:          serverconfig.DefaultDatastoreThrottlingEnabled,
+		datastoreThrottlingFrequency:        serverconfig.DefaultDatastoreThrottlingFrequency,
+		datastoreThrottlingDefaultThreshold: serverconfig.DefaultDatastoreThrottlingDefaultThreshold,
+		datastoreThrottlingMaxThreshold:     serverconfig.DefaultDatastoreThrottlingMaxThreshold,
+		datastoreThrottler:                  &throttler.NoopThrottler{},
 	}
 
 	for _, opt := range opts {
@@ -467,6 +515,20 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		}
 	}
 
+	if s.datastoreThrottlingEnabled {
+		s.logger.Info("Datastore throttling enabled enable with",
+			zap.Duration("frequency", s.datastoreThrottlingFrequency),
+			zap.Uint32("defaultThreshold", s.datastoreThrottlingDefaultThreshold),
+			zap.Uint32("maxThreshold", s.datastoreThrottlingMaxThreshold),
+		)
+
+		if s.datastoreThrottlingMaxThreshold != 0 && (s.datastoreThrottlingDefaultThreshold > s.datastoreThrottlingMaxThreshold) {
+			return nil, fmt.Errorf("datastoreThrottling.defaultThreshold must be smaller or equal to datastoreThrottling.maxThreshold")
+		}
+
+		s.datastoreThrottler = throttler.NewDispatchThrottler(s.datastoreThrottlingFrequency)
+	}
+
 	if s.datastore == nil {
 		return nil, fmt.Errorf("a datastore option must be provided")
 	}
@@ -499,6 +561,8 @@ func (s *Server) Close() {
 	}
 
 	s.typesystemResolverStop()
+
+	s.datastoreThrottler.Close()
 }
 
 func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequest) (*openfgav1.ListObjectsResponse, error) {
@@ -808,7 +872,8 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	}
 
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-	ctx = storage.ContextWithRelationshipTupleReader(ctx,
+
+	storageThrottlerClient := storagewrappers.NewDatastoreThrottlingClient(
 		storagewrappers.NewBoundedConcurrencyTupleReader(
 			storagewrappers.NewCombinedTupleReader(
 				s.datastore,
@@ -816,6 +881,13 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 			),
 			s.maxConcurrentReadsForCheck,
 		),
+		s.datastoreThrottlingDefaultThreshold,
+		s.datastoreThrottlingMaxThreshold,
+		s.datastoreThrottler,
+	)
+
+	ctx = storage.ContextWithRelationshipTupleReader(ctx,
+		storageThrottlerClient,
 	)
 
 	checkRequestMetadata := graph.NewCheckRequestMetadata(s.resolveNodeLimit)
@@ -836,6 +908,11 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 		if errors.Is(err, condition.ErrEvaluationFailed) {
 			return nil, serverErrors.ValidationError(err)
+		}
+
+		if errors.Is(err, context.DeadlineExceeded) && storageThrottlerClient.HadThrottled() {
+			// TODO - merge in
+			// return nil, serverErrors.ThrottledTimeout
 		}
 
 		return nil, serverErrors.HandleError("", err)

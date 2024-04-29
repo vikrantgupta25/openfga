@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openfga/openfga/internal/throttler"
+
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	language "github.com/openfga/language/pkg/go/transformer"
@@ -174,6 +176,54 @@ func TestServerPanicIfEmptyRequestDurationDispatchCountBuckets(t *testing.T) {
 			WithDatastore(mockDatastore),
 			WithRequestDurationByDispatchCountHistogramBuckets([]uint{}),
 		)
+	})
+}
+
+func TestServerPanicIfDefaultDatastoreThresholdGreaterThanMaxDatastoreThreshold(t *testing.T) {
+	require.PanicsWithError(t, "failed to construct the OpenFGA server: datastoreThrottling.defaultThreshold must be smaller or equal to datastoreThrottling.maxThreshold", func() {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+		_ = MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+			WithDatastoreThrottlingEnabled(true),
+			WithDatastoreThrottlingDefaultThreshold(100),
+			WithDatastoreThrottlingMaxThreshold(80),
+		)
+	})
+}
+
+func TestServerSetupDatastoreThrottler(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	t.Run("noop_datastore_throttler_by_default", func(t *testing.T) {
+		datastore := memory.New()
+		defer datastore.Close()
+
+		openfga, err := NewServerWithOpts(WithDatastore(datastore))
+		require.NoError(t, err)
+		_, ok := openfga.datastoreThrottler.(*throttler.NoopThrottler)
+		require.True(t, ok)
+
+		t.Cleanup(openfga.Close)
+	})
+
+	t.Run("datastore_throttler_when_enabled", func(t *testing.T) {
+		datastore := memory.New()
+		defer datastore.Close()
+
+		openfga, err := NewServerWithOpts(WithDatastore(datastore),
+			WithDatastoreThrottlingEnabled(true),
+			WithDatastoreThrottlingFrequency(10*time.Microsecond),
+			WithDatastoreThrottlingDefaultThreshold(100),
+			WithDatastoreThrottlingMaxThreshold(120))
+		require.NoError(t, err)
+		_, ok := openfga.datastoreThrottler.(*throttler.DispatchThrottler)
+		require.True(t, ok)
+
+		t.Cleanup(openfga.Close)
 	})
 }
 

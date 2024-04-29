@@ -39,6 +39,11 @@ const (
 	DefaultListObjectsDispatchThrottlingEnabled   = false
 	DefaultListObjectsDispatchThrottlingFrequency = 10 * time.Microsecond
 	DefaultListObjectsDispatchThrottlingThreshold = 100
+
+	DefaultDatastoreThrottlingEnabled          = false
+	DefaultDatastoreThrottlingFrequency        = 10 * time.Microsecond
+	DefaultDatastoreThrottlingDefaultThreshold = 100
+	DefaultDatastoreThrottlingMaxThreshold     = 0
 )
 
 type DatastoreMetricsConfig struct {
@@ -189,6 +194,14 @@ type DispatchThrottlingConfig struct {
 	Threshold uint32
 }
 
+// DatastoreThrottlingConfig defines configuration for datastore throttling.
+type DatastoreThrottlingConfig struct {
+	Enabled          bool
+	Frequency        time.Duration
+	DefaultThreshold uint32
+	MaxThreshold     uint32
+}
+
 type Config struct {
 	// If you change any of these settings, please update the documentation at
 	// https://github.com/openfga/openfga.dev/blob/main/docs/content/intro/setup-openfga.mdx
@@ -249,6 +262,7 @@ type Config struct {
 	CheckQueryCache               CheckQueryCache
 	CheckDispatchThrottling       DispatchThrottlingConfig
 	ListObjectsDispatchThrottling DispatchThrottlingConfig
+	DatastoreThrottling           DatastoreThrottlingConfig
 
 	RequestDurationDatastoreQueryCountBuckets []string
 	RequestDurationDispatchCountBuckets       []string
@@ -347,6 +361,18 @@ func (cfg *Config) Verify() error {
 		}
 	}
 
+	if cfg.DatastoreThrottling.Enabled {
+		if cfg.DatastoreThrottling.Frequency <= 0 {
+			return errors.New("datastoreThrottling.frequency must be non-negative time duration")
+		}
+		if cfg.DatastoreThrottling.DefaultThreshold <= 0 {
+			return errors.New("datastoreThrottling.defaultThreshold threshold must be non-negative integer")
+		}
+		if cfg.DatastoreThrottling.MaxThreshold != 0 && cfg.DatastoreThrottling.DefaultThreshold > cfg.DatastoreThrottling.MaxThreshold {
+			return errors.New("'datastoreThrottling.defaultThreshold' must be less than or equal to 'datastoreThrottling.maxThreshold")
+		}
+	}
+
 	return nil
 }
 
@@ -432,6 +458,12 @@ func DefaultConfig() *Config {
 			Enabled:   DefaultCheckDispatchThrottlingEnabled,
 			Frequency: DefaultCheckDispatchThrottlingFrequency,
 			Threshold: DefaultCheckDispatchThrottlingThreshold,
+		},
+		DatastoreThrottling: DatastoreThrottlingConfig{
+			Enabled:          DefaultDatastoreThrottlingEnabled,
+			Frequency:        DefaultDatastoreThrottlingFrequency,
+			DefaultThreshold: DefaultDatastoreThrottlingDefaultThreshold,
+			MaxThreshold:     DefaultDatastoreThrottlingMaxThreshold,
 		},
 	}
 }

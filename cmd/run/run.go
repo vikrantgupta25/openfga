@@ -224,6 +224,14 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Uint32("dispatch-throttling-threshold", defaultConfig.CheckDispatchThrottling.Threshold, "DEPRECATED: Use check-dispatch-throttling-threshold instead. define the number of dispatches above which check requests will be throttled.")
 
+	flags.Bool("datastore-throttling-enabled", defaultConfig.DatastoreThrottling.Enabled, "enable throttling for requests when the request's number of datastore query is high. Enabling this feature will prioritize requests requiring less than the configured datastore query threshold over requests whose datastore query exceeds the configured threshold.")
+
+	flags.Duration("datastore-throttling-frequency", defaultConfig.DatastoreThrottling.Frequency, "defines how frequent datastore throttling will be evaluated. This controls how frequently throttled datastore queries are serviced.")
+
+	flags.Uint32("datastore-throttling-default-threshold", defaultConfig.DatastoreThrottling.DefaultThreshold, "define the default number of datastore queries above which requests will be throttled.")
+
+	flags.Uint32("datastore-throttling-max-threshold", defaultConfig.DatastoreThrottling.MaxThreshold, "define the maximum datastore query threshold beyond which requests will be throttled. 0 will use the 'datastore-throttling-default-threshold' value as maximum.")
+
 	// NOTE: if you add a new flag here, update the function below, too
 
 	cmd.PreRun = bindRunFlagsFunc(flags)

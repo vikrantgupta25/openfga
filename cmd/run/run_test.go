@@ -1145,6 +1145,22 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.listObjectsDispatchThrottling.properties.threshold.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.ListObjectsDispatchThrottling.Threshold)
+
+	val = res.Get("properties.datastoreThrottling.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), cfg.DatastoreThrottling.Enabled)
+
+	val = res.Get("properties.datastoreThrottling.properties.frequency.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.DatastoreThrottling.Frequency.String())
+
+	val = res.Get("properties.datastoreThrottling.properties.defaultThreshold.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.DatastoreThrottling.DefaultThreshold)
+
+	val = res.Get("properties.datastoreThrottling.properties.maxThreshold.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.DatastoreThrottling.MaxThreshold)
 }
 
 func TestRunCommandNoConfigDefaultValues(t *testing.T) {

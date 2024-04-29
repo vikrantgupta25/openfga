@@ -180,6 +180,43 @@ func TestVerifyConfig(t *testing.T) {
 		err := cfg.Verify()
 		require.Error(t, err)
 	})
+
+	t.Run("non_positive_datastore_throttling_frequency", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.DatastoreThrottling = DatastoreThrottlingConfig{
+			Enabled:          true,
+			Frequency:        0,
+			DefaultThreshold: 30,
+		}
+
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
+
+	t.Run("non_positive_datastore_throttling_default_threshold", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.DatastoreThrottling = DatastoreThrottlingConfig{
+			Enabled:          true,
+			Frequency:        10 * time.Microsecond,
+			DefaultThreshold: 0,
+		}
+
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
+
+	t.Run("default_datastore_throttling_threshold_greater_max", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.DatastoreThrottling = DatastoreThrottlingConfig{
+			Enabled:          true,
+			Frequency:        10 * time.Microsecond,
+			DefaultThreshold: 20,
+			MaxThreshold:     19,
+		}
+
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
 }
 
 func TestDefaultMaxConditionValuationCost(t *testing.T) {

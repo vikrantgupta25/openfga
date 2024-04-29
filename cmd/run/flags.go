@@ -218,5 +218,17 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		// The below configuration will be deprecated in favour of OPENFGA_CHECK_DISPATCH_THROTTLING_THRESHOLD
 		util.MustBindPFlag("dispatchThrottling.threshold", flags.Lookup("dispatch-throttling-threshold"))
 		util.MustBindEnv("dispatchThrottling.threshold", "OPENFGA_DISPATCH_THROTTLING_THRESHOLD")
+
+		util.MustBindPFlag("datastoreThrottling.enabled", flags.Lookup("datastore-throttling-enabled"))
+		util.MustBindEnv("datastoreThrottling.enabled", "OPENFGA_DATASTORE_THROTTLING_ENABLED")
+
+		util.MustBindPFlag("datastoreThrottling.frequency", flags.Lookup("datastore-throttling-frequency"))
+		util.MustBindEnv("datastoreThrottling.frequency", "OPENFGA_DATASTORE_DISPATCH_THROTTLING_FREQUENCY")
+
+		util.MustBindPFlag("datastoreThrottling.threshold", flags.Lookup("datastore-throttling-default-threshold"))
+		util.MustBindEnv("datastoreThrottling.threshold", "OPENFGA_DATASTORE_THROTTLING_DEFAULT_THRESHOLD")
+
+		util.MustBindPFlag("datastoreThrottling.maxThreshold", flags.Lookup("datastore-throttling-max-threshold"))
+		util.MustBindEnv("datastoreThrottling.maxThreshold", "OPENFGA_DATASTORE_THROTTLING_MAX_THRESHOLD")
 	}
 }
