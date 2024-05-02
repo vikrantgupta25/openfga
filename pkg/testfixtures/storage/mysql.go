@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"io"
 	"log"
@@ -11,13 +12,12 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/docker/docker/api/types/container"
-	"github.com/go-sql-driver/mysql"
-	"github.com/pressly/goose/v3"
+	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	testcontainersmysql "github.com/testcontainers/testcontainers-go/modules/mysql"
 
-	"github.com/openfga/openfga/assets"
+	mysql "github.com/openfga/openfga/pkg/storage/mysql/migrations"
 )
 
 const (
@@ -72,31 +72,28 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 
 	uri := fmt.Sprintf("%s:%s@tcp(%s)/defaultdb?parseTime=true", mySQLTestContainer.username, mySQLTestContainer.password, mySQLTestContainer.addr)
 
-	err = mysql.SetLogger(log.New(io.Discard, "", 0))
+	err = mysqldriver.SetLogger(log.New(io.Discard, "", 0))
 	require.NoError(t, err)
 
-	goose.SetLogger(goose.NopLogger())
-
-	db, err := goose.OpenDBWithDriver("mysql", uri)
-	require.NoError(t, err)
-	defer db.Close()
+	var db *sql.DB
 
 	backoffPolicy := backoff.NewExponentialBackOff()
 	backoffPolicy.MaxElapsedTime = 2 * time.Minute
 	err = backoff.Retry(
 		func() error {
+			db, err = sql.Open("mysql", uri)
+			if err != nil {
+				return err
+			}
 			return db.Ping()
 		},
 		backoffPolicy,
 	)
 	require.NoError(t, err, "failed to connect to mysql container")
 
-	goose.SetBaseFS(assets.EmbedMigrations)
+	version, err := mysql.Migrations.Run(ctx, db)
+	require.NoError(t, err)
 
-	err = goose.Up(db, assets.MySQLMigrationDir)
-	require.NoError(t, err)
-	version, err := goose.GetDBVersion(db)
-	require.NoError(t, err)
 	mySQLTestContainer.version = version
 
 	return mySQLTestContainer

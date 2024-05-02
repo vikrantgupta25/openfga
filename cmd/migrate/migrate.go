@@ -9,13 +9,15 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	"github.com/go-sql-driver/mysql"
+	mysqldriver "github.com/go-sql-driver/mysql"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"github.com/openfga/openfga/assets"
+	"github.com/openfga/openfga/pkg/storage/migrate"
+	mysql "github.com/openfga/openfga/pkg/storage/mysql/migrations"
+	postgres "github.com/openfga/openfga/pkg/storage/postgres/migrations"
 )
 
 const (
@@ -54,29 +56,32 @@ func NewMigrateCommand() *cobra.Command {
 	return cmd
 }
 
-func runMigration(_ *cobra.Command, _ []string) error {
+func runMigration(cmd *cobra.Command, _ []string) error {
+	var (
+		driver     string
+		migrations *migrate.Registry
+	)
+
+	ctx := cmd.Context()
+
 	engine := viper.GetString(datastoreEngineFlag)
 	uri := viper.GetString(datastoreURIFlag)
-	targetVersion := viper.GetUint(versionFlag)
+	targetVersion := viper.GetInt64(versionFlag)
 	timeout := viper.GetDuration(timeoutFlag)
 	verbose := viper.GetBool(verboseMigrationFlag)
 	username := viper.GetString(datastoreUsernameFlag)
 	password := viper.GetString(datastorePasswordFlag)
 
-	goose.SetLogger(goose.NopLogger())
-	goose.SetVerbose(verbose)
-
-	var driver, migrationsPath string
 	switch engine {
 	case "memory":
 		log.Println("no migrations to run for `memory` datastore")
 		return nil
 	case "mysql":
 		driver = "mysql"
-		migrationsPath = assets.MySQLMigrationDir
+		migrations = mysql.Migrations
 
 		// Parse the database uri with the mysql drivers function for it and update username/password, if set via flags
-		dsn, err := mysql.ParseDSN(uri)
+		dsn, err := mysqldriver.ParseDSN(uri)
 		if err != nil {
 			return fmt.Errorf("invalid database uri: %v", err)
 		}
@@ -86,11 +91,12 @@ func runMigration(_ *cobra.Command, _ []string) error {
 		if password != "" {
 			dsn.Passwd = password
 		}
+
 		uri = dsn.FormatDSN()
 
 	case "postgres":
 		driver = "pgx"
-		migrationsPath = assets.PostgresMigrationDir
+		migrations = postgres.Migrations
 
 		// Parse the database uri with url.Parse() and update username/password, if set via flags
 		dbURI, err := url.Parse(uri)
@@ -128,35 +134,12 @@ func runMigration(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("failed to initialize database connection: %w", err)
 	}
 
-	goose.SetBaseFS(assets.EmbedMigrations)
-
-	currentVersion, err := goose.GetDBVersion(db)
+	_, err = migrations.Run(ctx, db,
+		migrate.WithTargetVersion(targetVersion),
+		migrate.WithVerbose(verbose),
+	)
 	if err != nil {
-		return fmt.Errorf("failed to get db version: %w", err)
-	}
-
-	log.Printf("current version %d", currentVersion)
-
-	if targetVersion == 0 {
-		log.Println("running all migrations")
-		if err := goose.Up(db, migrationsPath); err != nil {
-			return fmt.Errorf("failed to run migrations: %w", err)
-		}
-	} else {
-		log.Printf("migrating to %d", targetVersion)
-		targetInt64Version := int64(targetVersion)
-		if targetInt64Version < currentVersion {
-			if err := goose.DownTo(db, migrationsPath, targetInt64Version); err != nil {
-				return fmt.Errorf("failed to run migrations down to %v: %w", targetInt64Version, err)
-			}
-		} else if targetInt64Version > currentVersion {
-			if err := goose.UpTo(db, migrationsPath, targetInt64Version); err != nil {
-				return fmt.Errorf("failed to run migrations up to %v: %w", targetInt64Version, err)
-			}
-		} else {
-			log.Println("nothing to do")
-			return nil
-		}
+		return fmt.Errorf("failed to run migrations: %v", err)
 	}
 
 	log.Println("migration done")
