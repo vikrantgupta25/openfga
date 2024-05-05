@@ -3,14 +3,12 @@ package graph
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/karlseguin/ccache/v3"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -37,6 +35,15 @@ var (
 		Namespace: build.ProjectName,
 		Name:      "check_cache_hit_count",
 		Help:      "The total number of cache hits for ResolveCheck.",
+	})
+	checkCacheExpiredCounter = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: build.ProjectName,
+		Name:      "check_cache_expired_count",
+		Help:      "The total number of cache expirations for ResolveCheck.",
+	})
+	checkCacheSizeCounter = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: build.ProjectName,
+		Name:      "check_cache_size",
 	})
 )
 
@@ -149,10 +156,14 @@ func (c *CachedCheckResolver) ResolveCheck(
 		return nil, err
 	}
 
+	checkCacheSizeCounter.Set(float64(c.cache.ItemCount()))
 	cachedResp := c.cache.Get(cacheKey)
-	isCached := cachedResp != nil && !cachedResp.Expired()
-	span.SetAttributes(attribute.Bool("is_cached", isCached))
-	if isCached {
+	isCached := cachedResp != nil
+	isExpired := cachedResp != nil && cachedResp.Expired()
+	if isExpired {
+		checkCacheExpiredCounter.Inc()
+	}
+	if isCached && !isExpired {
 		checkCacheHitCounter.Inc()
 
 		// return a copy to avoid races across goroutines
@@ -212,5 +223,5 @@ func CheckRequestCacheKey(req *ResolveCheckRequest) (string, error) {
 		}
 	}
 
-	return strconv.FormatUint(hasher.Key().ToUInt64(), 10), nil
+	return key, nil
 }
