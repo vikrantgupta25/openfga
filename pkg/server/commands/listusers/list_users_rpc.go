@@ -49,6 +49,7 @@ type expandResponse struct {
 }
 
 type foundUser struct {
+	parentReq      *internalListUsersRequest
 	user           *openfgav1.User
 	excludedUsers  []*openfgav1.User
 	noRelationship bool
@@ -270,7 +271,6 @@ func (l *listUsersQuery) expand(
 	req *internalListUsersRequest,
 	foundUsersChan chan<- foundUser,
 ) expandResponse {
-
 	ctx, span := tracer.Start(ctx, "expand")
 	defer span.End()
 	span.SetAttributes(attribute.Int("depth", int(req.depth)))
@@ -295,6 +295,7 @@ func (l *listUsersQuery) expand(
 	for _, userFilter := range req.GetUserFilters() {
 		if reqObjectType == userFilter.GetType() && reqRelation == userFilter.GetRelation() {
 			trySendResult(ctx, foundUser{
+				//parentReq: req,
 				user: &openfgav1.User{
 					User: &openfgav1.User_Userset{
 						Userset: &openfgav1.UsersetUser{
@@ -462,6 +463,7 @@ LoopOnIterator:
 					user := tuple.StringToUserProto(tuple.BuildObject(userObjectType, userObjectID))
 
 					trySendResult(ctx, foundUser{
+						//parentReq: req,
 						user: user,
 					}, foundUsersChan)
 				}
@@ -473,6 +475,7 @@ LoopOnIterator:
 			rewrittenReq := req.clone()
 			rewrittenReq.Object = &openfgav1.Object{Type: userObjectType, Id: userObjectID}
 			rewrittenReq.Relation = userRelation
+			rewrittenReq.parentRequest = req
 			resp := l.expand(ctx, rewrittenReq, foundUsersChan)
 			if resp.hasCycle {
 				hasCycle.Store(true)
@@ -574,7 +577,8 @@ func (l *listUsersQuery) expandIntersection(
 		// the intersection expression and can be sent on `foundUsersChan`
 		if (count + wildcardCount.Load()) == uint32(len(childOperands)) {
 			fu := foundUser{
-				user: tuple.StringToUserProto(key),
+				parentReq: req,
+				user:      tuple.StringToUserProto(key),
 			}
 			trySendResult(ctx, fu, foundUsersChan)
 		}
@@ -649,6 +653,7 @@ func (l *listUsersQuery) expandExclusion(
 	if baseWildcardExists {
 		if !subtractWildcardExists || subtractWildcardUser.noRelationship {
 			trySendResult(ctx, foundUser{
+				//parentReq: req,
 				user: tuple.StringToUserProto(wildcardKey),
 			}, foundUsersChan)
 		}
@@ -661,6 +666,7 @@ func (l *listUsersQuery) expandExclusion(
 
 			if !userIsSubtracted && !wildcardSubtracted {
 				trySendResult(ctx, foundUser{
+					//parentReq: req,
 					user: tuple.StringToUserProto(userKey),
 				}, foundUsersChan)
 
@@ -675,6 +681,7 @@ func (l *listUsersQuery) expandExclusion(
 					excludedUsers[tuple.UserProtoToString(excludedUser)] = struct{}{}
 
 					trySendResult(ctx, foundUser{
+						//parentReq:      req,
 						user:           excludedUser,
 						noRelationship: false,
 					}, foundUsersChan)
@@ -688,11 +695,13 @@ func (l *listUsersQuery) expandExclusion(
 			if _, userIsExcluded := excludedUsers[userKey]; !userIsExcluded {
 				if fu.noRelationship {
 					trySendResult(ctx, foundUser{
+						//parentReq:      req,
 						user:           tuple.StringToUserProto(userKey),
 						noRelationship: false,
 					}, foundUsersChan)
 				} else {
 					trySendResult(ctx, foundUser{
+						//parentReq:      req,
 						user:           tuple.StringToUserProto(userKey),
 						noRelationship: true,
 						excludedUsers: []*openfgav1.User{
@@ -708,6 +717,7 @@ func (l *listUsersQuery) expandExclusion(
 				subtractedUser, userIsSubtracted := subtractFoundUsersMap[userKey]
 				if (userIsSubtracted && subtractedUser.noRelationship) || subtractWildcardUser.noRelationship {
 					trySendResult(ctx, foundUser{
+						//parentReq:      req,
 						user:           tuple.StringToUserProto(userKey),
 						noRelationship: false,
 					}, foundUsersChan)
@@ -716,10 +726,10 @@ func (l *listUsersQuery) expandExclusion(
 				}
 
 				trySendResult(ctx, foundUser{
+					//parentReq:      req,
 					user:           tuple.StringToUserProto(userKey),
 					noRelationship: true,
 				}, foundUsersChan)
-
 			}
 		}
 	} else {
@@ -729,22 +739,48 @@ func (l *listUsersQuery) expandExclusion(
 			if userIsSubtracted {
 				if subtractedUser.noRelationship {
 					trySendResult(ctx, foundUser{
+						//parentReq:      req,
 						user:           tuple.StringToUserProto(key),
 						noRelationship: false,
 					}, foundUsersChan)
 
 					continue
-				} else {
-					trySendResult(ctx, foundUser{
-						user:           tuple.StringToUserProto(key),
-						noRelationship: true,
-					}, foundUsersChan)
-
-					continue
 				}
+
+				var excludedUsers []*openfgav1.User
+
+				// reqObject := req.GetObject()
+				// fuParentObject := fu.parentReq.GetObject()
+
+				// fuParentObjectType := fuParentObject.GetType()
+				// fuParentObjectID := fuParentObject.GetId()
+
+				// reqObjectType := reqObject.GetType()
+				// reqObjectID := reqObject.GetId()
+
+				// if fuParentObjectType == reqObjectType && fuParentObjectID == reqObjectID && fu.parentReq.GetRelation() == req.GetRelation() {
+				// 	excludedUsers = append(excludedUsers, fu.user)
+				// }
+
+				// if _, ok := baseFoundUsersMap[key]; ok {
+				// 	excludedUsers = append(excludedUsers, fu.user)
+				// }
+				if fu.parentReq != nil {
+					excludedUsers = append(excludedUsers, fu.user)
+				}
+
+				trySendResult(ctx, foundUser{
+					//parentReq:      req,
+					user:           tuple.StringToUserProto(key),
+					noRelationship: true,
+					excludedUsers:  excludedUsers,
+				}, foundUsersChan)
+
+				continue
 			} else {
 				if !fu.noRelationship {
 					trySendResult(ctx, foundUser{
+						//parentReq:      req,
 						user:           tuple.StringToUserProto(key),
 						noRelationship: false,
 					}, foundUsersChan)
@@ -846,6 +882,7 @@ LoopOnIterator:
 			rewrittenReq := req.clone()
 			rewrittenReq.Object = &openfgav1.Object{Type: userObjectType, Id: userObjectID}
 			rewrittenReq.Relation = computedRelation
+			rewrittenReq.parentRequest = req
 			resp := l.expand(ctx, rewrittenReq, foundUsersChan)
 			return resp.err
 		})

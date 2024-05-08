@@ -21,6 +21,10 @@ type listUsersRequest interface {
 type internalListUsersRequest struct {
 	*openfgav1.ListUsersRequest
 
+	// parentRequest tracks the parent request this current ListUsers expansion
+	// step is derived from.
+	parentRequest *internalListUsersRequest
+
 	// visitedUsersetsMap keeps track of the "path" we've made so far.
 	// It prevents stack overflows by preventing visiting the same userset twice.
 	visitedUsersetsMap map[string]struct{}
@@ -129,7 +133,7 @@ func fromListUsersRequest(o listUsersRequest, datastoreQueryCount *atomic.Uint32
 	if datastoreQueryCount == nil {
 		datastoreQueryCount = new(atomic.Uint32)
 	}
-	return &internalListUsersRequest{
+	r := &internalListUsersRequest{
 		ListUsersRequest: &openfgav1.ListUsersRequest{
 			StoreId:              o.GetStoreId(),
 			AuthorizationModelId: o.GetAuthorizationModelId(),
@@ -143,6 +147,8 @@ func fromListUsersRequest(o listUsersRequest, datastoreQueryCount *atomic.Uint32
 		depth:               0,
 		datastoreQueryCount: datastoreQueryCount,
 	}
+	r.parentRequest = r
+	return r
 }
 
 // clone creates a copy of the request. Note that some fields are not deep-cloned.
