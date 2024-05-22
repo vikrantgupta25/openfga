@@ -1673,27 +1673,6 @@ func TestListUsersBlah(t *testing.T) {
 			butNot:        []string{"group:fga#member"},
 		},
 		/*{
-			name: "excluded_users_through_nested_groups_1",
-			req: &openfgav1.ListUsersRequest{
-				Object:   &openfgav1.Object{Type: "document", Id: "1"},
-				Relation: "viewer",
-				UserFilters: []*openfgav1.UserTypeFilter{
-					{
-						Type:     "group",
-						Relation: "member",
-					},
-				},
-			},
-			model: model,
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("group:eng", "member", "group:fga#member"),
-				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
-				tuple.NewTupleKey("document:1", "blocked", "group:fga#member"),
-			},
-			expectedUsers: []string{"group:eng#member"},
-			butNot:        []string{"group:fga#member"},
-		},
-		{
 			name: "excluded_users_through_nested_groups_2",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
@@ -1736,6 +1715,221 @@ func TestListUsersBlah(t *testing.T) {
 			},
 			expectedUsers: []string{},
 		},*/
+	}
+
+	tests.runListUsersTestCases(t)
+}
+
+func TestListUsersChainedNegationUsersets(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	model := `model
+		schema 1.1
+
+	type user
+
+	type group
+		relations
+			define member: [group#member, user]
+
+	type document
+		relations
+			define viewer: [group#member] but not blocked
+			define blocked: [group#member] but not unblocked
+			define unblocked: [group#member]`
+
+	tests := ListUsersTests{
+		{
+			name: "chained_negation_1",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:eng", "member", "group:eng-fga#member"),
+				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+				tuple.NewTupleKey("document:1", "blocked", "group:eng-fga#member"),
+			},
+			expectedUsers: []string{"group:eng#member"},
+			butNot:        []string{"group:eng-fga#member"}, // Not negating
+		},
+		{
+			name: "chained_negation_2",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:eng", "member", "group:eng-fga#member"),
+				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+				tuple.NewTupleKey("document:1", "unblocked", "group:eng-fga#member"),
+			},
+			expectedUsers: []string{"group:eng#member", "group:eng-fga#member"},
+		},
+		{
+			name: "chained_negation_3",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:eng", "member", "group:eng-fga#member"),
+				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+
+				tuple.NewTupleKey("document:1", "unblocked", "group:eng#member"),
+				tuple.NewTupleKey("document:1", "unblocked", "group:eng-fga#member"),
+			},
+			expectedUsers: []string{"group:eng#member", "group:eng-fga#member"},
+		},
+		{
+			name: "chained_negation_4",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+				tuple.NewTupleKey("document:1", "viewer", "group:eng-backend#member"),
+				tuple.NewTupleKey("document:1", "unblocked", "group:eng-frontend#member"),
+
+				tuple.NewTupleKey("group:eng", "member", "group:eng-frontend#member"),
+				tuple.NewTupleKey("group:eng", "member", "group:eng-backend#member"),
+			},
+			expectedUsers: []string{"group:eng#member", "group:eng-frontend#member", "group:eng-backend#member"},
+		},
+		{
+			name: "chained_negation_5",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+				tuple.NewTupleKey("document:1", "blocked", "group:eng#member"),
+				tuple.NewTupleKey("document:1", "unblocked", "group:eng#member"),
+
+				tuple.NewTupleKey("document:1", "blocked", "group:eng-frontend#member"),
+
+				tuple.NewTupleKey("document:1", "blocked", "group:eng-backend#member"),
+				tuple.NewTupleKey("document:1", "unblocked", "group:eng-backend#member"),
+
+				tuple.NewTupleKey("group:eng", "member", "group:eng-frontend#member"),
+				tuple.NewTupleKey("group:eng", "member", "group:eng-backend#member"),
+			},
+			expectedUsers: []string{"group:eng#member", "group:eng-backend#member", "group:eng-frontend#member"},
+		},
+		{
+			name: "chained_negation_6",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "group:sales#member"),
+				tuple.NewTupleKey("document:1", "blocked", "group:sales#member"),
+				tuple.NewTupleKey("document:1", "unblocked", "group:sales#member"),
+			},
+			expectedUsers: []string{"group:sales#member"},
+		},
+		{
+			name: "chained_negation_7",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "group:eng-backend#member"),
+				tuple.NewTupleKey("document:1", "blocked", "group:eng-backend#member"),
+				tuple.NewTupleKey("document:1", "unblocked", "group:eng#member"),
+
+				tuple.NewTupleKey("group:eng", "member", "group:eng-backend#member"),
+			},
+			expectedUsers: []string{"group:eng-backend#member"},
+		},
+		{
+			name: "chained_negation_8",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "group:eng-frontend#member"),
+				tuple.NewTupleKey("document:1", "blocked", "group:eng#member"),
+				tuple.NewTupleKey("document:1", "unblocked", "group:eng#member"),
+				tuple.NewTupleKey("document:1", "unblocked", "group:eng-backend#member"),
+
+				tuple.NewTupleKey("group:eng", "member", "group:eng-backend#member"),
+				tuple.NewTupleKey("group:eng", "member", "group:eng-frontend#member"),
+			},
+			expectedUsers: []string{"group:eng-frontend#member"},
+		},
+		{
+			name: "chained_negation_9",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+				tuple.NewTupleKey("document:1", "blocked", "group:eng#member"),
+				tuple.NewTupleKey("document:1", "unblocked", "group:eng-backend#member"),
+
+				tuple.NewTupleKey("group:eng", "member", "group:eng-backend#member"),
+			},
+			expectedUsers: []string{"group:eng-backend#member"},
+		},
+		{
+			name: "chained_negation_10",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+				tuple.NewTupleKey("document:1", "blocked", "group:eng-backend#member"),
+				tuple.NewTupleKey("document:1", "blocked", "group:eng-frontend#member"), // group:eng-frontend#member should be blocked
+				tuple.NewTupleKey("document:1", "unblocked", "group:eng-backend#member"),
+				tuple.NewTupleKey("document:1", "unblocked", "group:eng-sre#member"),
+
+				tuple.NewTupleKey("group:eng", "member", "group:eng-backend#member"),
+				tuple.NewTupleKey("group:eng", "member", "group:eng-frontend#member"),
+				tuple.NewTupleKey("group:eng", "member", "group:eng-sre#member"),
+			},
+			expectedUsers: []string{"group:eng#member", "group:eng-sre#member", "group:eng-backend#member"},
+			butNot:        []string{"group:eng-frontend#member"}, //needs to be excluded
+		},
+		{
+			name: "chained_negation_11",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "group:eng-sre#member"),
+				tuple.NewTupleKey("document:1", "blocked", "group:eng"),
+				tuple.NewTupleKey("document:1", "unblocked", "group:eng-sre#member"),
+
+				tuple.NewTupleKey("group:eng", "member", "group:eng-sre#member"),
+			},
+			expectedUsers: []string{"group:eng-sre#member"},
+		},
+		{
+			name: "chained_negation_12",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+				tuple.NewTupleKey("document:1", "viewer", "group:eng-sre#member"),
+				tuple.NewTupleKey("document:1", "blocked", "group:eng-sre#member"),
+				tuple.NewTupleKey("document:1", "unblocked", "group:eng#member"),
+
+				tuple.NewTupleKey("group:eng", "member", "group:eng-sre#member"),
+			},
+			expectedUsers: []string{"group:eng#member", "group:eng-sre#member"},
+		},
+		{
+			name: "chained_negation_13",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+				tuple.NewTupleKey("document:1", "viewer", "group:eng-frontend#member"),
+				tuple.NewTupleKey("document:1", "viewer", "group:eng-backend#member"),
+				tuple.NewTupleKey("document:1", "blocked", "group:eng-backend#member"),
+				tuple.NewTupleKey("document:1", "unblocked", "group:eng#member"),
+
+				tuple.NewTupleKey("group:eng", "member", "group:eng-sre#member"),
+				tuple.NewTupleKey("group:eng", "member", "group:eng-frontend#member"),
+				tuple.NewTupleKey("group:eng", "member", "group:eng-backend#member"),
+			},
+			expectedUsers: []string{"group:eng#member", "group:eng-frontend#member", "group:eng-backend#member", "group:eng-sre#member"},
+		},
+		{
+			name: "chained_negation_14",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+				tuple.NewTupleKey("document:1", "blocked", "group:eng#member"),
+				tuple.NewTupleKey("document:1", "blocked", "group:eng-sre#member"),
+				tuple.NewTupleKey("document:1", "unblocked", "group:eng#member"),
+
+				tuple.NewTupleKey("group:eng", "member", "group:eng-sre#member"),
+			},
+			expectedUsers: []string{"group:eng#member", "group:eng-sre#member"},
+		},
+		{
+			name: "chained_negation_15",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+				tuple.NewTupleKey("document:1", "blocked", "group:eng-sre#member"),
+				tuple.NewTupleKey("document:1", "unblocked", "group:eng#member"),
+
+				tuple.NewTupleKey("group:eng", "member", "group:eng-sre#member"),
+			},
+			expectedUsers: []string{"group:eng#member", "group:eng-sre#member"},
+		},
+	}
+
+	for i := range tests {
+		tests[i].model = model
+		tests[i].req = &openfgav1.ListUsersRequest{
+			Object:      &openfgav1.Object{Type: "document", Id: "1"},
+			Relation:    "viewer",
+			UserFilters: []*openfgav1.UserTypeFilter{{Type: "group", Relation: "member"}},
+		}
 	}
 
 	tests.runListUsersTestCases(t)

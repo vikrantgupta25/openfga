@@ -749,25 +749,25 @@ func (l *listUsersQuery) expandExclusion(
 
 				var excludedUsers []*openfgav1.User
 
-				// reqObject := req.GetObject()
-				// fuParentObject := fu.parentReq.GetObject()
+				reqObject := req.GetObject()
+				fuParentObject := fu.parentReq.GetObject()
 
-				// fuParentObjectType := fuParentObject.GetType()
-				// fuParentObjectID := fuParentObject.GetId()
+				fuParentObjectType := fuParentObject.GetType()
+				fuParentObjectID := fuParentObject.GetId()
 
-				// reqObjectType := reqObject.GetType()
-				// reqObjectID := reqObject.GetId()
+				reqObjectType := reqObject.GetType()
+				reqObjectID := reqObject.GetId()
 
-				// if fuParentObjectType == reqObjectType && fuParentObjectID == reqObjectID && fu.parentReq.GetRelation() == req.GetRelation() {
-				// 	excludedUsers = append(excludedUsers, fu.user)
-				// }
-
-				// if _, ok := baseFoundUsersMap[key]; ok {
-				// 	excludedUsers = append(excludedUsers, fu.user)
-				// }
-				if fu.parentReq != nil {
+				if fuParentObjectType == reqObjectType && fuParentObjectID == reqObjectID && fu.parentReq.GetRelation() == req.GetRelation() {
 					excludedUsers = append(excludedUsers, fu.user)
 				}
+
+				if _, ok := baseFoundUsersMap[key]; ok {
+					excludedUsers = append(excludedUsers, fu.user)
+				}
+				// if fu.parentReq != nil {
+				// 	excludedUsers = append(excludedUsers, fu.user)
+				// }
 
 				trySendResult(ctx, foundUser{
 					//parentReq:      req,
