@@ -1226,3 +1226,69 @@ tests:
               "x": 1.797693134862315708145274237317
             expectation:
               - user:jon
+  - name: union_with_branch_error_and_branch_resolves
+    stages:
+      - model: |
+          model
+            schema 1.1
+
+          type user
+          type group
+            relations
+              define member: [user]
+
+          type document
+            relations
+              define viewer: a or b
+              define a: [group#member with condfloat]
+              define b: [group#member]
+          
+          condition condfloat(x: double) {
+            x > 0.0
+          }
+        tuples:
+          - user: user:maria
+            relation: member
+            object: group:one
+          - user: user:maria
+            relation: member
+            object: group:two
+          - user: group:one#member
+            relation: a
+            object: document:1
+            condition:
+              name: condfloat
+          - user: group:two#member
+            relation: b
+            object: document:1
+        checkAssertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:maria
+            context:
+              "x": "1.79769313486231570814527423731704356798070e+309" # causes evaluation error on branch "a"
+            expectation: true # because branch "b" resolves successfully
+        listObjectsAssertions:
+          - request:
+              user: user:maria
+              type: document
+              relation: viewer
+            context:
+              "x": "1.79769313486231570814527423731704356798070e+309" # causes evaluation error on branch "a"
+            errorCode: 2000
+            # TODO inconsistent with Check. See https://github.com/openfga/openfga/issues/1567
+            # expectation:
+                # - document:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            context:
+              "x": "1.79769313486231570814527423731704356798070e+309" # causes evaluation error on branch "a"
+            errorCode: 2000
+              # TODO inconsistent with Check. See https://github.com/openfga/openfga/issues/1567
+              # expectation:
+              # - user:maria
