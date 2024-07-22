@@ -180,6 +180,7 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 		ctx = typesystem.ContextWithTypesystem(ctx, typeSystem)
 
 		b.Run(name, func(b *testing.B) {
+			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				resp, err := listusers.NewListUsersQuery(ds,
 					listusers.WithListUsersMaxResults(bm.inputConfigMaxResults),
