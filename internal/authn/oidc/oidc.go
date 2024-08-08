@@ -109,17 +109,10 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 	ok = slices.ContainsFunc(validIssuers, func(issuer string) bool {
 		v := jwt.NewValidator(jwt.WithIssuer(issuer))
 		err := v.Validate(claims)
-		fmt.Printf("claims: %v\n", claims)
-		fmt.Printf("issuer: %v\n", issuer)
-		fmt.Printf("validIssuers: %v\n", validIssuers)
-		fmt.Printf("error: %v\n", err)
 		return err == nil
 	})
 
 	if !ok {
-		fmt.Printf("claims: %v\n", claims)
-		val, _ := oidc.GetConfiguration()
-		fmt.Printf("config: %v\n", val)
 		return nil, errInvalidIssuer
 	}
 
