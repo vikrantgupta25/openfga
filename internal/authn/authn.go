@@ -72,19 +72,3 @@ type OIDCAuthenticator interface {
 	GetConfiguration() (*OidcConfig, error)
 	GetKeys() (*keyfunc.JWKS, error)
 }
-
-// ContextWithClientID injects the provided clientID into the parent context.
-func ContextWithClientID(parent context.Context, clientID string) context.Context {
-	return context.WithValue(parent, clientIDContextKey, clientID)
-}
-
-// ClientIDFromContext extracts the clientID from the provided ctx (if any).
-func ClientIDFromContext(ctx context.Context) (string, bool) {
-	claims, ok := ctx.Value(clientIDContextKey).(string)
-	if !ok {
-		// return "", false
-		return "hello", true
-	}
-
-	return claims, true
-}

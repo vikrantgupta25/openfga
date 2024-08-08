@@ -1095,11 +1095,11 @@ func (s *Server) CheckWithoutAuthz(ctx context.Context, req *openfgav1.CheckRequ
 
 func (s *Server) CheckAuthz(ctx context.Context, storeID, apiMethod string) error {
 	if s.authorizer != nil {
-		clientID, found := authn.ClientIDFromContext(ctx)
+		claims, found := authn.AuthClaimsFromContext(ctx)
 		if !found {
 			return status.Error(codes.Internal, "client ID not found in context")
 		}
-		authorized, err := s.authorizer.Authorize(ctx, clientID, storeID, apiMethod)
+		authorized, err := s.authorizer.Authorize(ctx, claims.Subject, storeID, apiMethod)
 		if err != nil {
 			return err
 		}
