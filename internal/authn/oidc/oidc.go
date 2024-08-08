@@ -91,6 +91,13 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 		return nil, errInvalidClaims
 	}
 
+	// Client ID is `azp` in the OpenID standard https://openid.net/specs/openid-connect-core-1_0.html#IDToken
+	// and `client_id` in RFC9068 https://www.rfc-editor.org/rfc/rfc9068.html#name-data-structure
+	clientID := claims["azp"].(string)
+	if clientID == "" {
+		clientID = claims["client_id"].(string)
+	}
+
 	validIssuers := []string{
 		oidc.MainIssuer,
 	}
@@ -130,8 +137,9 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 	}
 
 	principal := &authn.AuthClaims{
-		Subject: subject,
-		Scopes:  make(map[string]bool),
+		Subject:  subject,
+		Scopes:   make(map[string]bool),
+		ClientID: clientID,
 	}
 
 	// optional scopes

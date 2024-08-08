@@ -43,8 +43,9 @@ func (n NoopAuthenticator) Close() {}
 
 // AuthClaims contains claims that are included in OIDC standard claims. https://openid.net/specs/openid-connect-core-1_0.html#IDToken
 type AuthClaims struct {
-	Subject string
-	Scopes  map[string]bool
+	Subject  string
+	Scopes   map[string]bool
+	ClientID string
 }
 
 // ContextWithAuthClaims injects the provided AuthClaims into the parent context.
