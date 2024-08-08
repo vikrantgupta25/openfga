@@ -93,9 +93,12 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 
 	// Client ID is `azp` in the OpenID standard https://openid.net/specs/openid-connect-core-1_0.html#IDToken
 	// and `client_id` in RFC9068 https://www.rfc-editor.org/rfc/rfc9068.html#name-data-structure
-	clientID := claims["azp"].(string)
-	if clientID == "" {
-		clientID = claims["client_id"].(string)
+	clientID, ok := claims["azp"].(string)
+	if !ok {
+		clientID, ok = claims["client_id"].(string)
+		if !ok {
+			clientID = ""
+		}
 	}
 
 	validIssuers := []string{
@@ -106,10 +109,17 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 	ok = slices.ContainsFunc(validIssuers, func(issuer string) bool {
 		v := jwt.NewValidator(jwt.WithIssuer(issuer))
 		err := v.Validate(claims)
+		fmt.Printf("claims: %v\n", claims)
+		fmt.Printf("issuer: %v\n", issuer)
+		fmt.Printf("validIssuers: %v\n", validIssuers)
+		fmt.Printf("error: %v\n", err)
 		return err == nil
 	})
 
 	if !ok {
+		fmt.Printf("claims: %v\n", claims)
+		val, _ := oidc.GetConfiguration()
+		fmt.Printf("config: %v\n", val)
 		return nil, errInvalidIssuer
 	}
 

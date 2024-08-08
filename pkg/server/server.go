@@ -1099,7 +1099,7 @@ func (s *Server) CheckAuthz(ctx context.Context, storeID, apiMethod string) erro
 		if !found {
 			return status.Error(codes.Internal, "client ID not found in context")
 		}
-		authorized, err := s.authorizer.Authorize(ctx, claims.Subject, storeID, apiMethod)
+		authorized, err := s.authorizer.Authorize(ctx, claims.ClientID, storeID, apiMethod)
 		if err != nil {
 			return err
 		}
