@@ -115,10 +115,34 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["enable-consistency-params"]
+                "enum": ["enable-consistency-params", "enable-fga-on-fga"]
             },
             "default": [],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
+        },
+        "fgaOnFga": {
+            "description": "the configuration needed for the fga on fga store",
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "Enable logging of statistics for Check requests. For every Check request, log the number of hits that each node in the graph of the authorization model receives. The logs are flushed every 500 milliseconds. These statistics will be used to improve the strategy used to cache Check sub-problems.",
+                    "type": "boolean",
+                    "default": false,
+                    "x-env-variable": "OPENFGA_FGA_ON_FGA_ENABLED"
+                },
+                "storeId": {
+                    "description": "The storeId to be used for the FGA on FGA store.",
+                    "type": "string",
+                    "default": "",
+                    "x-env-variable": "OPENFGA_FGA_ON_FGA_STORE_ID"
+                },
+                "modelId": {
+                    "description": "The modelId to be used for the FGA on FGA store.",
+                    "type": "string",
+                    "default": "",
+                    "x-env-variable": "OPENFGA_FGA_ON_FGA_MODEL_ID"
+                },
+            }
         },
         "checkTrackerEnabled": {
             "type": "object",

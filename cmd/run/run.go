@@ -85,7 +85,15 @@ func NewRunCommand() *cobra.Command {
 	defaultConfig := serverconfig.DefaultConfig()
 	flags := cmd.Flags()
 
-	flags.StringSlice("experimentals", defaultConfig.Experimentals, "a list of experimental features to enable. Allowed values: `enable-consistency-params`")
+	flags.StringSlice("experimentals", defaultConfig.Experimentals, "a list of experimental features to enable. Allowed values: `enable-consistency-params`, `enable-fga-on-fga`")
+
+	flags.Bool("fga-on-fga-enabled", defaultConfig.FGAOnFGA.Enabled, "enable/disable the FGA on FGA feature")
+
+	flags.String("fga-on-fga-store-id", defaultConfig.FGAOnFGA.StoreID, "the store ID of the OpenFGA store that will be used to access the FGA on FGA store")
+
+	flags.String("fga-on-fga-model-id", defaultConfig.FGAOnFGA.ModelID, "the model ID of the OpenFGA store that will be used to access the FGA on FGA store")
+
+	cmd.MarkFlagsRequiredTogether("fga-on-fga-enabled", "fga-on-fga-store-id", "fga-on-fga-model-id")
 
 	flags.String("grpc-addr", defaultConfig.GRPC.Addr, "the host:port address to serve the grpc server on")
 
@@ -624,6 +632,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithListUsersDispatchThrottlingThreshold(config.ListUsersDispatchThrottling.Threshold),
 		server.WithListUsersDispatchThrottlingMaxThreshold(config.ListUsersDispatchThrottling.MaxThreshold),
 		server.WithExperimentals(experimentals...),
+		server.WithFGAOnFGAParams(config.FGAOnFGA),
 		server.WithContext(ctx),
 		server.WithCheckTrackerEnabled(config.CheckTrackerEnabled),
 	)

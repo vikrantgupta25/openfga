@@ -55,6 +55,7 @@ const (
 	AuthorizationModelIDHeader                                  = "Openfga-Authorization-Model-Id"
 	authorizationModelIDKey                                     = "authorization_model_id"
 	ExperimentalEnableConsistencyParams ExperimentalFeatureFlag = "enable-consistency-params"
+	ExperimentalFGAOnFGAParams          ExperimentalFeatureFlag = "enable-fga-on-fga"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -120,6 +121,7 @@ type Server struct {
 	maxAuthorizationModelCacheSize   int
 	maxAuthorizationModelSizeInBytes int
 	experimentals                    []ExperimentalFeatureFlag
+	FGAOnFGA                         serverconfig.FGAOnFGAConfig
 	serviceName                      string
 
 	// NOTE don't use this directly, use function resolveTypesystem. See https://github.com/openfga/openfga/issues/1527
@@ -343,6 +345,13 @@ func WithExperimentals(experimentals ...ExperimentalFeatureFlag) OpenFGAServiceV
 	}
 }
 
+// WithFGAOnFGAParams sets the storeID and modelID for the FGA on FGA feature.
+func WithFGAOnFGAParams(FGAOnFGA serverconfig.FGAOnFGAConfig) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.FGAOnFGA = FGAOnFGA
+	}
+}
+
 // WithCheckQueryCacheEnabled enables caching of Check results for the Check and List objects APIs.
 // This cache is shared for all requests.
 // See also WithCheckQueryCacheLimit and WithCheckQueryCacheTTL.
@@ -538,6 +547,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		maxAuthorizationModelSizeInBytes: serverconfig.DefaultMaxAuthorizationModelSizeInBytes,
 		maxAuthorizationModelCacheSize:   serverconfig.DefaultMaxAuthorizationModelCacheSize,
 		experimentals:                    make([]ExperimentalFeatureFlag, 0, 10),
+		FGAOnFGA:                         serverconfig.FGAOnFGAConfig{StoreID: "", ModelID: ""},
 
 		checkQueryCacheEnabled: serverconfig.DefaultCheckQueryCacheEnable,
 		checkQueryCacheLimit:   serverconfig.DefaultCheckQueryCacheLimit,
@@ -640,13 +650,22 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 	s.typesystemResolver, s.typesystemResolverStop = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
 
-	var err error
-	s.authorizer, err = authz.NewAuthorizer(&authz.Config{
-		StoreID: "01J4SM8CPAZJK9022XA0KC3JBD",
-		ModelID: "01J4SM8CPK1SK68Y0FDRWMWDZ0",
-	}, s, s.logger)
+	err := s.validateFGAOnFGAEnabled()
 	if err != nil {
 		return nil, err
+	}
+
+	if s.IsExperimentallyEnabled(ExperimentalFGAOnFGAParams) {
+		var err error
+		s.authorizer, err = authz.NewAuthorizer(&authz.Config{
+			StoreID: s.FGAOnFGA.StoreID,
+			ModelID: s.FGAOnFGA.ModelID,
+			// StoreID: "01J4SM8CPAZJK9022XA0KC3JBD",
+			// ModelID: "01J4SM8CPK1SK68Y0FDRWMWDZ0",
+		}, s, s.logger)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return s, nil
@@ -1514,6 +1533,13 @@ func (s *Server) resolveTypesystem(ctx context.Context, storeID, modelID string)
 func (s *Server) validateConsistencyRequest(c openfgav1.ConsistencyPreference) error {
 	if !s.IsExperimentallyEnabled(ExperimentalEnableConsistencyParams) && openfgav1.ConsistencyPreference_UNSPECIFIED != c {
 		return status.Error(codes.InvalidArgument, "Consistency parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server")
+	}
+	return nil
+}
+
+func (s *Server) validateFGAOnFGAEnabled() error {
+	if s.IsExperimentallyEnabled(ExperimentalFGAOnFGAParams) && (s.FGAOnFGA.StoreID == "" || s.FGAOnFGA.ModelID == "") {
+		return status.Error(codes.InvalidArgument, "FGA on FGA parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-fga-on-fga` configuration option when running OpenFGA server. Additionally, the `--fga-on-fga-store-id` and `--fga-on-fga-model-id` parameters must not be empty")
 	}
 	return nil
 }
