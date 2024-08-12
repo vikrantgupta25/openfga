@@ -222,6 +222,19 @@ func New(model *openfgav1.AuthorizationModel) *TypeSystem {
 	}
 }
 
+func (t *TypeSystem) GetModuleForObjectType(objectType string) (string, error) {
+	// TODO: call language GetModuleForObjectType and memoize the result
+	typeDef, exists := t.GetTypeDefinition(objectType)
+	if !exists {
+		return "", &ObjectTypeUndefinedError{
+			ObjectType: objectType,
+			Err:        ErrObjectTypeUndefined,
+		}
+	}
+
+	return typeDef.GetMetadata().GetModule(), nil
+}
+
 // GetAuthorizationModelID returns the ID for the authorization
 // model this TypeSystem was constructed for.
 func (t *TypeSystem) GetAuthorizationModelID() string {

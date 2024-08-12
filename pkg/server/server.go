@@ -948,11 +948,6 @@ func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfga
 
 func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openfgav1.WriteResponse, error) {
 	const methodName = "Write"
-	err := s.CheckAuthz(ctx, req.GetStoreId(), methodName)
-	if err != nil {
-		return nil, err
-	}
-
 	ctx, span := tracer.Start(ctx, methodName)
 	defer span.End()
 
@@ -962,17 +957,28 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 		}
 	}
 
-	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
-		Service: s.serviceName,
-		Method:  methodName,
-	})
-
 	storeID := req.GetStoreId()
-
 	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
 	}
+
+	if s.IsExperimentallyEnabled(ExperimentalFGAOnFGAParams) && s.authorizer != nil {
+		modules, err := s.getModulesForWriteRequest(req, typesys)
+		if err != nil {
+			return nil, err
+		}
+
+		err = s.CheckAuthz(ctx, req.GetStoreId(), methodName, modules)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: s.serviceName,
+		Method:  methodName,
+	})
 
 	cmd := commands.NewWriteCommand(
 		s.datastore,
@@ -984,6 +990,53 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 		Writes:               req.GetWrites(),
 		Deletes:              req.GetDeletes(),
 	})
+}
+
+// TODO: Find a better place for this function
+// getModulesForWriteRequest returns the modules that should be checked for the write request.
+// If we encounter a type with no attached module, we should break and return no modules so that the final fga on fga check will be against the store
+// Otherwise we return a list of unique modules encountered so that FGA on FGA can check them after.
+func (s *Server) getModulesForWriteRequest(req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) ([]string, error) {
+	modulesMap := make(map[string]bool)
+
+	// We keep track of shouldCheckOnStore to avoid checking on store if we encounter a type with no module
+	shouldCheckOnStore := false
+	for _, tupleKey := range req.GetWrites().GetTupleKeys() {
+		objType, _ := tuple.SplitObject(tupleKey.GetObject())
+		module, err := typesys.GetModuleForObjectType(objType)
+		if err != nil {
+			return nil, err
+		}
+		if module == "" {
+			shouldCheckOnStore = true
+			break
+		}
+		modulesMap[module] = true
+	}
+
+	if !shouldCheckOnStore {
+		for _, tupleKey := range req.GetDeletes().GetTupleKeys() {
+			objType, _ := tuple.SplitObject(tupleKey.GetObject())
+			module, err := typesys.GetModuleForObjectType(objType)
+			if err != nil {
+				return nil, err
+			}
+			if module == "" {
+				break
+			}
+			modulesMap[module] = true
+		}
+	}
+
+	if shouldCheckOnStore {
+		return []string{}, nil
+	}
+
+	modules := make([]string, 0, len(modulesMap))
+	for module := range modulesMap {
+		modules = append(modules, module)
+	}
+	return modules, nil
 }
 
 func (s *Server) CheckWithoutAuthz(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
@@ -1112,13 +1165,13 @@ func (s *Server) CheckWithoutAuthz(ctx context.Context, req *openfgav1.CheckRequ
 	return res, nil
 }
 
-func (s *Server) CheckAuthz(ctx context.Context, storeID, apiMethod string) error {
+func (s *Server) CheckAuthz(ctx context.Context, storeID, apiMethod string, modules ...[]string) error {
 	if s.authorizer != nil {
 		claims, found := authn.AuthClaimsFromContext(ctx)
 		if !found {
 			return status.Error(codes.Internal, "client ID not found in context")
 		}
-		authorized, err := s.authorizer.Authorize(ctx, claims.ClientID, storeID, apiMethod)
+		authorized, err := s.authorizer.Authorize(ctx, claims.ClientID, storeID, apiMethod, modules...)
 		if err != nil {
 			return err
 		}
@@ -1137,7 +1190,6 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	}
 
 	return s.CheckWithoutAuthz(ctx, req)
-
 }
 
 func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*openfgav1.ExpandResponse, error) {

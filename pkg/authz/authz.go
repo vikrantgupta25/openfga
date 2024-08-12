@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/pkg/logger"
 )
 
@@ -70,19 +71,38 @@ func (a *Authorizer) getRelation(apiMethod string) (string, error) {
 }
 
 // Authorize checks if the user has access to the resource.
-func (a *Authorizer) Authorize(ctx context.Context, clientID, storeID, apiMethod string) (bool, error) {
+func (a *Authorizer) Authorize(ctx context.Context, clientID, storeID, apiMethod string, modules ...[]string) (bool, error) {
 	relation, err := a.getRelation(apiMethod)
 	if err != nil {
 		return false, err
 	}
 
+	if len(modules) > 0 {
+		// TODO: Make this more efficient by parallelizing the requests
+		for _, module := range modules {
+			allowed, err := a.individualAuthorize(ctx, clientID, relation, fmt.Sprintf(`module:%s|%s`, storeID, module))
+			if !allowed || err != nil {
+				return false, err
+			}
+		}
+	} else {
+		allowed, err := a.individualAuthorize(ctx, clientID, relation, fmt.Sprintf(`store:%s`, storeID))
+		if !allowed || err != nil {
+			return false, err
+		}
+	}
+
+	return true, nil
+}
+
+func (a *Authorizer) individualAuthorize(ctx context.Context, clientID string, relation string, object string) (bool, error) {
 	req := &openfgav1.CheckRequest{
 		StoreId:              a.config.StoreID,
 		AuthorizationModelId: a.config.ModelID,
 		TupleKey: &openfgav1.CheckRequestTupleKey{
 			User:     fmt.Sprintf(`application:%s`, clientID),
 			Relation: relation,
-			Object:   fmt.Sprintf(`store:%s`, storeID),
+			Object:   object,
 		},
 	}
 
@@ -91,7 +111,7 @@ func (a *Authorizer) Authorize(ctx context.Context, clientID, storeID, apiMethod
 		return false, err
 	}
 
-	if !resp.Allowed {
+	if !resp.GetAllowed() {
 		return false, nil
 	}
 
