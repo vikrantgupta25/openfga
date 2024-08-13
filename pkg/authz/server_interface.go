@@ -9,4 +9,5 @@ import (
 // ServerInterface is an interface for the server.
 type ServerInterface interface {
 	CheckWithoutAuthz(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error)
+	ListObjectsWithoutAuthz(ctx context.Context, req *openfgav1.ListObjectsRequest) (*openfgav1.ListObjectsResponse, error)
 }

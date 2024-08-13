@@ -53,14 +53,14 @@ func (a *Authorizer) getRelation(apiMethod string) (string, error) {
 		return "can_call_read_assertions", nil
 	case "WriteAuthorizationModel":
 		return "can_call_write_authorization_models", nil
-	// case "ListStores":
-	// 	return "can_call_list_stores", nil
-	// case "CreateStore":
-	// 	return "can_call_create_store", nil
-	// case "GetStore":
-	// 	return "can_call_get_store", nil
-	// case "DeleteStore":
-	// 	return "can_call_delete", nil
+	case "ListStores":
+		return "can_call_list_stores", nil
+	case "CreateStore":
+		return "can_call_create_stores", nil
+	case "GetStore":
+		return "can_call_get_store", nil
+	case "DeleteStore":
+		return "can_call_delete_store", nil
 	case "Expand":
 		return "can_call_expand", nil
 	case "ReadChanges":
@@ -68,6 +68,40 @@ func (a *Authorizer) getRelation(apiMethod string) (string, error) {
 	default:
 		return "", fmt.Errorf("unknown api method: %s", apiMethod)
 	}
+}
+
+func (a *Authorizer) AuthorizeCreateStore(ctx context.Context, clientID string) (bool, error) {
+	relation, err := a.getRelation("CreateStore")
+	if err != nil {
+		return false, err
+	}
+	allowed, err := a.individualAuthorize(ctx, clientID, relation, fmt.Sprintf(`system:%s`, "fga"), &openfgav1.ContextualTupleKeys{})
+	if !allowed || err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+func (a *Authorizer) ListAuthorizedStores(ctx context.Context, clientID string) ([]string, error) {
+	relation, err := a.getRelation("ListStores")
+	if err != nil {
+		return nil, err
+	}
+	req := &openfgav1.ListObjectsRequest{
+		StoreId:              a.config.StoreID,
+		AuthorizationModelId: a.config.ModelID,
+		User:                 fmt.Sprintf(`application:%s`, clientID),
+		Relation:             relation,
+		Type:                 "store",
+	}
+
+	resp, err := a.server.ListObjectsWithoutAuthz(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.GetObjects(), nil
 }
 
 // Authorize checks if the user has access to the resource.
@@ -80,15 +114,16 @@ func (a *Authorizer) Authorize(ctx context.Context, clientID, storeID, apiMethod
 	if len(modules) > 0 {
 		// TODO: Make this more efficient by parallelizing the requests
 		for _, module := range modules {
-            contextualTuples := openfgav1.ContextualTupleKeys{
-                TupleKeys: []*openfgav1.TupleKey{
-                    {
-                        User:     fmt.Sprintf(`store:%s`, storeID),
-                        Relation: "store",
-                        Object:   fmt.Sprintf(`module:%s|%s`, storeID, module),
-                    },
-                },
-            }
+			contextualTuples := openfgav1.ContextualTupleKeys{
+				TupleKeys: []*openfgav1.TupleKey{
+					{
+						User:     fmt.Sprintf(`store:%s`, storeID),
+						Relation: "store",
+						Object:   fmt.Sprintf(`module:%s|%s`, storeID, module),
+					},
+				},
+			}
+
 			allowed, err := a.individualAuthorize(ctx, clientID, relation, fmt.Sprintf(`module:%s|%s`, storeID, module), &contextualTuples)
 			if !allowed || err != nil {
 				return false, err
@@ -113,7 +148,7 @@ func (a *Authorizer) individualAuthorize(ctx context.Context, clientID string, r
 			Relation: relation,
 			Object:   object,
 		},
-        ContextualTuples: contextualTuples,
+		ContextualTuples: contextualTuples,
 	}
 
 	resp, err := a.server.CheckWithoutAuthz(ctx, req)

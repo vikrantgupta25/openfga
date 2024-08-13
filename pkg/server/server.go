@@ -685,13 +685,8 @@ func (s *Server) Close() {
 	s.typesystemResolverStop()
 }
 
-func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequest) (*openfgav1.ListObjectsResponse, error) {
-	err := s.CheckAuthz(ctx, req.GetStoreId(), "ListObjects")
-	if err != nil {
-		return nil, err
-	}
-
-	err = s.validateConsistencyRequest(req.GetConsistency())
+func (s *Server) ListObjectsWithoutAuthz(ctx context.Context, req *openfgav1.ListObjectsRequest) (*openfgav1.ListObjectsResponse, error) {
+	err := s.validateConsistencyRequest(req.GetConsistency())
 	if err != nil {
 		return nil, err
 	}
@@ -798,6 +793,15 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	return &openfgav1.ListObjectsResponse{
 		Objects: result.Objects,
 	}, nil
+}
+
+func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequest) (*openfgav1.ListObjectsResponse, error) {
+	err := s.CheckAuthz(ctx, req.GetStoreId(), "ListObjects")
+	if err != nil {
+		return nil, err
+	}
+
+	return s.ListObjectsWithoutAuthz(ctx, req)
 }
 
 func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) error {
@@ -997,7 +1001,7 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 // If we encounter a type with no attached module, we should break and return no modules so that the final fga on fga check will be against the store
 // Otherwise we return a list of unique modules encountered so that FGA on FGA can check them after.
 func (s *Server) getModulesForWriteRequest(req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) ([]string, error) {
-	modulesMap := make(map[string]bool)
+	modulesMap := make(map[string]struct{})
 
 	// We keep track of shouldCheckOnStore to avoid checking on store if we encounter a type with no module
 	shouldCheckOnStore := false
@@ -1011,7 +1015,7 @@ func (s *Server) getModulesForWriteRequest(req *openfgav1.WriteRequest, typesys 
 			shouldCheckOnStore = true
 			break
 		}
-		modulesMap[module] = true
+		modulesMap[module] = struct{}{}
 	}
 
 	if !shouldCheckOnStore {
@@ -1024,7 +1028,7 @@ func (s *Server) getModulesForWriteRequest(req *openfgav1.WriteRequest, typesys 
 			if module == "" {
 				break
 			}
-			modulesMap[module] = true
+			modulesMap[module] = struct{}{}
 		}
 	}
 
@@ -1163,6 +1167,39 @@ func (s *Server) CheckWithoutAuthz(ctx context.Context, req *openfgav1.CheckRequ
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return res, nil
+}
+
+func (s *Server) CheckAuthzListStores(ctx context.Context) ([]string, error) {
+	if s.authorizer != nil {
+		claims, found := authn.AuthClaimsFromContext(ctx)
+		if !found {
+			return []string{}, status.Error(codes.Internal, "client ID not found in context")
+		}
+		list, err := s.authorizer.ListAuthorizedStores(ctx, claims.ClientID)
+		if err != nil {
+			return []string{}, err
+		}
+		return list, nil
+	}
+	return nil, nil
+}
+
+func (s *Server) CheckCreateStoreAuthz(ctx context.Context) error {
+	if s.authorizer != nil {
+		claims, found := authn.AuthClaimsFromContext(ctx)
+		if !found {
+			return status.Error(codes.Internal, "client ID not found in context")
+		}
+		authorized, err := s.authorizer.AuthorizeCreateStore(ctx, claims.ClientID)
+		if err != nil {
+			return err
+		}
+
+		if !authorized {
+			return status.Error(codes.PermissionDenied, "permission denied")
+		}
+	}
+	return nil
 }
 
 func (s *Server) CheckAuthz(ctx context.Context, storeID, apiMethod string, modules ...string) error {
@@ -1434,7 +1471,8 @@ func (s *Server) ReadChanges(ctx context.Context, req *openfgav1.ReadChangesRequ
 }
 
 func (s *Server) CreateStore(ctx context.Context, req *openfgav1.CreateStoreRequest) (*openfgav1.CreateStoreResponse, error) {
-	ctx, span := tracer.Start(ctx, "CreateStore")
+	const methodName = "CreateStore"
+	ctx, span := tracer.Start(ctx, methodName)
 	defer span.End()
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
@@ -1443,9 +1481,14 @@ func (s *Server) CreateStore(ctx context.Context, req *openfgav1.CreateStoreRequ
 		}
 	}
 
+	err := s.CheckCreateStoreAuthz(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
-		Method:  "CreateStore",
+		Method:  methodName,
 	})
 
 	c := commands.NewCreateStoreCommand(s.datastore, commands.WithCreateStoreCmdLogger(s.logger))
@@ -1460,7 +1503,8 @@ func (s *Server) CreateStore(ctx context.Context, req *openfgav1.CreateStoreRequ
 }
 
 func (s *Server) DeleteStore(ctx context.Context, req *openfgav1.DeleteStoreRequest) (*openfgav1.DeleteStoreResponse, error) {
-	ctx, span := tracer.Start(ctx, "DeleteStore")
+	const methodName = "DeleteStore"
+	ctx, span := tracer.Start(ctx, methodName)
 	defer span.End()
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
@@ -1469,9 +1513,14 @@ func (s *Server) DeleteStore(ctx context.Context, req *openfgav1.DeleteStoreRequ
 		}
 	}
 
+	err := s.CheckAuthz(ctx, req.GetStoreId(), methodName)
+	if err != nil {
+		return nil, err
+	}
+
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
-		Method:  "DeleteStore",
+		Method:  methodName,
 	})
 
 	cmd := commands.NewDeleteStoreCommand(s.datastore, commands.WithDeleteStoreCmdLogger(s.logger))
@@ -1486,7 +1535,8 @@ func (s *Server) DeleteStore(ctx context.Context, req *openfgav1.DeleteStoreRequ
 }
 
 func (s *Server) GetStore(ctx context.Context, req *openfgav1.GetStoreRequest) (*openfgav1.GetStoreResponse, error) {
-	ctx, span := tracer.Start(ctx, "GetStore")
+	methodName := "GetStore"
+	ctx, span := tracer.Start(ctx, methodName)
 	defer span.End()
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
@@ -1495,9 +1545,14 @@ func (s *Server) GetStore(ctx context.Context, req *openfgav1.GetStoreRequest) (
 		}
 	}
 
+	err := s.CheckAuthz(ctx, req.GetStoreId(), methodName)
+	if err != nil {
+		return nil, err
+	}
+
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
-		Method:  "GetStore",
+		Method:  methodName,
 	})
 
 	q := commands.NewGetStoreQuery(s.datastore, commands.WithGetStoreQueryLogger(s.logger))
@@ -1505,7 +1560,9 @@ func (s *Server) GetStore(ctx context.Context, req *openfgav1.GetStoreRequest) (
 }
 
 func (s *Server) ListStores(ctx context.Context, req *openfgav1.ListStoresRequest) (*openfgav1.ListStoresResponse, error) {
-	ctx, span := tracer.Start(ctx, "ListStores")
+	methodName := "ListStores"
+
+	ctx, span := tracer.Start(ctx, methodName)
 	defer span.End()
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
@@ -1516,14 +1573,41 @@ func (s *Server) ListStores(ctx context.Context, req *openfgav1.ListStoresReques
 
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
-		Method:  "ListStores",
+		Method:  methodName,
 	})
+
+	stores, err := s.CheckAuthzListStores(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	storesMap := make(map[string]struct{})
+	for _, store := range stores {
+		storesMap[store] = struct{}{}
+	}
 
 	q := commands.NewListStoresQuery(s.datastore,
 		commands.WithListStoresQueryLogger(s.logger),
 		commands.WithListStoresQueryEncoder(s.encoder),
 	)
-	return q.Execute(ctx, req)
+
+	resp, err := q.Execute(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	accessibleStores := []*openfgav1.Store{}
+	for _, store := range resp.GetStores() {
+		if _, ok := storesMap[store.GetId()]; ok {
+			accessibleStores = append(accessibleStores, store)
+		}
+	}
+
+	// TODO: If the number of accessible stores is 0, repeat the query with the next continuation token until we get some stores
+	return &openfgav1.ListStoresResponse{
+		Stores:            accessibleStores,
+		ContinuationToken: resp.GetContinuationToken(),
+	}, nil
 }
 
 // IsReady reports whether the datastore is ready. Please see the implementation of [[storage.OpenFGADatastore.IsReady]]
