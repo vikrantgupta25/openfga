@@ -80,13 +80,22 @@ func (a *Authorizer) Authorize(ctx context.Context, clientID, storeID, apiMethod
 	if len(modules) > 0 {
 		// TODO: Make this more efficient by parallelizing the requests
 		for _, module := range modules {
-			allowed, err := a.individualAuthorize(ctx, clientID, relation, fmt.Sprintf(`module:%s|%s`, storeID, module))
+            contextualTuples := openfgav1.ContextualTupleKeys{
+                TupleKeys: []*openfgav1.TupleKey{
+                    {
+                        User:     fmt.Sprintf(`store:%s`, storeID),
+                        Relation: relation,
+                        Object:   fmt.Sprintf(`module:%s|%s`, storeID, clientID),
+                    },
+                },
+            }
+			allowed, err := a.individualAuthorize(ctx, clientID, relation, fmt.Sprintf(`module:%s|%s`, storeID, module), &contextualTuples)
 			if !allowed || err != nil {
 				return false, err
 			}
 		}
 	} else {
-		allowed, err := a.individualAuthorize(ctx, clientID, relation, fmt.Sprintf(`store:%s`, storeID))
+		allowed, err := a.individualAuthorize(ctx, clientID, relation, fmt.Sprintf(`store:%s`, storeID), &openfgav1.ContextualTupleKeys{})
 		if !allowed || err != nil {
 			return false, err
 		}
@@ -95,7 +104,7 @@ func (a *Authorizer) Authorize(ctx context.Context, clientID, storeID, apiMethod
 	return true, nil
 }
 
-func (a *Authorizer) individualAuthorize(ctx context.Context, clientID string, relation string, object string) (bool, error) {
+func (a *Authorizer) individualAuthorize(ctx context.Context, clientID string, relation string, object string, contextualTuples *openfgav1.ContextualTupleKeys) (bool, error) {
 	req := &openfgav1.CheckRequest{
 		StoreId:              a.config.StoreID,
 		AuthorizationModelId: a.config.ModelID,
@@ -104,6 +113,7 @@ func (a *Authorizer) individualAuthorize(ctx context.Context, clientID string, r
 			Relation: relation,
 			Object:   object,
 		},
+        ContextualTuples: contextualTuples,
 	}
 
 	resp, err := a.server.CheckWithoutAuthz(ctx, req)
