@@ -71,7 +71,7 @@ func (a *Authorizer) getRelation(apiMethod string) (string, error) {
 }
 
 // Authorize checks if the user has access to the resource.
-func (a *Authorizer) Authorize(ctx context.Context, clientID, storeID, apiMethod string, modules ...[]string) (bool, error) {
+func (a *Authorizer) Authorize(ctx context.Context, clientID, storeID, apiMethod string, modules ...string) (bool, error) {
 	relation, err := a.getRelation(apiMethod)
 	if err != nil {
 		return false, err
@@ -85,7 +85,7 @@ func (a *Authorizer) Authorize(ctx context.Context, clientID, storeID, apiMethod
                     {
                         User:     fmt.Sprintf(`store:%s`, storeID),
                         Relation: "store",
-                        Object:   fmt.Sprintf(`module:%s|%s`, storeID, clientID),
+                        Object:   fmt.Sprintf(`module:%s|%s`, storeID, module),
                     },
                 },
             }

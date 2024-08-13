@@ -969,7 +969,7 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 			return nil, err
 		}
 
-		err = s.CheckAuthz(ctx, req.GetStoreId(), methodName, modules)
+		err = s.CheckAuthz(ctx, req.GetStoreId(), methodName, modules...)
 		if err != nil {
 			return nil, err
 		}
@@ -1165,7 +1165,7 @@ func (s *Server) CheckWithoutAuthz(ctx context.Context, req *openfgav1.CheckRequ
 	return res, nil
 }
 
-func (s *Server) CheckAuthz(ctx context.Context, storeID, apiMethod string, modules ...[]string) error {
+func (s *Server) CheckAuthz(ctx context.Context, storeID, apiMethod string, modules ...string) error {
 	if s.authorizer != nil {
 		claims, found := authn.AuthClaimsFromContext(ctx)
 		if !found {
