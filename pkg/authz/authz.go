@@ -84,7 +84,7 @@ func (a *Authorizer) Authorize(ctx context.Context, clientID, storeID, apiMethod
                 TupleKeys: []*openfgav1.TupleKey{
                     {
                         User:     fmt.Sprintf(`store:%s`, storeID),
-                        Relation: relation,
+                        Relation: "store",
                         Object:   fmt.Sprintf(`module:%s|%s`, storeID, clientID),
                     },
                 },
