@@ -23,7 +23,7 @@ type Authorizer struct {
 // NewAuthorizer creates a new authorizer.
 func NewAuthorizer(config *Config, server ServerInterface, logger logger.Logger) (*Authorizer, error) {
 	if config == nil || config.StoreID == "" || config.ModelID == "" {
-		return nil, fmt.Errorf("config is invalid")
+		return nil, fmt.Errorf("'StoreID' and 'ModelID' configs must be set")
 	}
 
 	return &Authorizer{

@@ -660,8 +660,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		s.authorizer, err = authz.NewAuthorizer(&authz.Config{
 			StoreID: s.FGAOnFGA.StoreID,
 			ModelID: s.FGAOnFGA.ModelID,
-			// StoreID: "01J4SM8CPAZJK9022XA0KC3JBD",
-			// ModelID: "01J4SM8CPK1SK68Y0FDRWMWDZ0",
 		}, s, s.logger)
 		if err != nil {
 			return nil, err
@@ -1040,6 +1038,7 @@ func (s *Server) getModulesForWriteRequest(req *openfgav1.WriteRequest, typesys 
 	for module := range modulesMap {
 		modules = append(modules, module)
 	}
+
 	return modules, nil
 }
 
