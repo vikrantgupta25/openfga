@@ -232,14 +232,14 @@ func (t *TypeSystem) GetModuleForObjectTypeRelation(objectType string, relation 
 		}
 	}
 
-    relationsMetadata := typeDef.GetMetadata().GetRelations()
-    relationMetadata, exists := relationsMetadata[relation]
-    if exists {
-        relationModule := relationMetadata.GetModule()
-        if relationModule != "" {
-            return relationModule, nil
-        }
-    }
+	relationsMetadata := typeDef.GetMetadata().GetRelations()
+	relationMetadata, exists := relationsMetadata[relation]
+	if exists {
+		relationModule := relationMetadata.GetModule()
+		if relationModule != "" {
+			return relationModule, nil
+		}
+	}
 
 	return typeDef.GetMetadata().GetModule(), nil
 }

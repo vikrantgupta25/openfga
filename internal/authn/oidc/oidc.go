@@ -24,10 +24,11 @@ import (
 )
 
 type RemoteOidcAuthenticator struct {
-	MainIssuer    string
-	IssuerAliases []string
-	Audience      string
-	Subjects      []string
+	MainIssuer     string
+	IssuerAliases  []string
+	Audience       string
+	Subjects       []string
+	ClientIDClaims []string
 
 	JwksURI string
 	JWKs    *keyfunc.JWKS
@@ -50,15 +51,16 @@ var (
 var _ authn.Authenticator = (*RemoteOidcAuthenticator)(nil)
 var _ authn.OIDCAuthenticator = (*RemoteOidcAuthenticator)(nil)
 
-func NewRemoteOidcAuthenticator(mainIssuer string, issuerAliases []string, audience string, subjects []string) (*RemoteOidcAuthenticator, error) {
+func NewRemoteOidcAuthenticator(mainIssuer string, issuerAliases []string, audience string, subjects []string, clientIDClaims []string) (*RemoteOidcAuthenticator, error) {
 	client := retryablehttp.NewClient()
 	client.Logger = nil
 	oidc := &RemoteOidcAuthenticator{
-		MainIssuer:    mainIssuer,
-		IssuerAliases: issuerAliases,
-		Audience:      audience,
-		Subjects:      subjects,
-		httpClient:    client.StandardClient(),
+		MainIssuer:     mainIssuer,
+		IssuerAliases:  issuerAliases,
+		Audience:       audience,
+		Subjects:       subjects,
+		httpClient:     client.StandardClient(),
+		ClientIDClaims: clientIDClaims,
 	}
 	err := fetchJWKs(oidc)
 	if err != nil {
@@ -89,16 +91,6 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
 		return nil, errInvalidClaims
-	}
-
-	// Client ID is `azp` in the OpenID standard https://openid.net/specs/openid-connect-core-1_0.html#IDToken
-	// and `client_id` in RFC9068 https://www.rfc-editor.org/rfc/rfc9068.html#name-data-structure
-	clientID, ok := claims["azp"].(string)
-	if !ok {
-		clientID, ok = claims["client_id"].(string)
-		if !ok {
-			clientID = ""
-		}
 	}
 
 	validIssuers := []string{
@@ -138,6 +130,31 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 			return nil, errInvalidSubject
 		}
 	}
+
+	// Client ID is:
+	// 1. If the user has set it in configuration, use that
+	// 2, If the user has not set it in configuration, use the following as default:
+	// 2.a. Use `azp`: the OpenID standard https://openid.net/specs/openid-connect-core-1_0.html#IDToken
+	// 3.b. Use `client_id` in RFC9068 https://www.rfc-editor.org/rfc/rfc9068.html#name-data-structure
+	clientIDClaims := oidc.ClientIDClaims
+	if len(clientIDClaims) == 0 {
+		clientIDClaims = []string{"azp", "client_id"}
+	}
+	clientID := ""
+	for _, claimString := range clientIDClaims {
+		clientID, ok = claims[claimString].(string)
+		if ok {
+			break
+		}
+	}
+
+	// clientID, ok := claims["azp"].(string)
+	//if !ok {
+	//	clientID, ok = claims["client_id"].(string)
+	//	if !ok {
+	//		clientID = ""
+	//	}
+	//}
 
 	principal := &authn.AuthClaims{
 		Subject:  subject,
