@@ -3,6 +3,7 @@ package authz
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -112,22 +113,48 @@ func (a *Authorizer) Authorize(ctx context.Context, clientID, storeID, apiMethod
 	}
 
 	if len(modules) > 0 {
-		// TODO: Make this more efficient by parallelizing the requests
+		var wg sync.WaitGroup
+		var mu sync.Mutex
+		allowed := false
+		var err error
+		done := make(chan struct{})
 		for _, module := range modules {
-			contextualTuples := openfgav1.ContextualTupleKeys{
-				TupleKeys: []*openfgav1.TupleKey{
-					{
-						User:     fmt.Sprintf(`store:%s`, storeID),
-						Relation: "store",
-						Object:   fmt.Sprintf(`module:%s|%s`, storeID, module),
+			wg.Add(1)
+			go func(module string) {
+				defer wg.Done()
+				contextualTuples := openfgav1.ContextualTupleKeys{
+					TupleKeys: []*openfgav1.TupleKey{
+						{
+							User:     fmt.Sprintf(`store:%s`, storeID),
+							Relation: "store",
+							Object:   fmt.Sprintf(`module:%s|%s`, storeID, module),
+						},
 					},
-				},
-			}
+				}
 
-			allowed, err := a.individualAuthorize(ctx, clientID, relation, fmt.Sprintf(`module:%s|%s`, storeID, module), &contextualTuples)
-			if !allowed || err != nil {
-				return false, err
+				allowed, err = a.individualAuthorize(ctx, clientID, relation, fmt.Sprintf(`module:%s|%s`, storeID, module), &contextualTuples)
+				mu.Lock()
+				defer mu.Unlock()
+
+				// If any of the modules is allowed, we can return early.
+				if allowed {
+					close(done)
+				}
+			}(module)
+		}
+
+		go func() {
+			wg.Wait()
+			// Only close the channel if we haven't already done so.
+			if !allowed {
+				close(done)
 			}
+		}()
+
+		<-done
+
+		if !allowed || err != nil {
+			return false, err
 		}
 	} else {
 		allowed, err := a.individualAuthorize(ctx, clientID, relation, fmt.Sprintf(`store:%s`, storeID), &openfgav1.ContextualTupleKeys{})
