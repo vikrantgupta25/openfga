@@ -966,7 +966,7 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 		return nil, err
 	}
 
-	if s.fgaOnFgaIsEnabled() && s.authorizer != nil {
+	if s.fgaOnFgaIsEnabled() && s.authorizer != nil && !authz.SkipAuthzCheckFromContext(ctx) {
 		modules, err := s.getModulesForWriteRequest(req, typesys)
 		if err != nil {
 			return nil, err
@@ -1203,7 +1203,7 @@ func (s *Server) CheckCreateStoreAuthz(ctx context.Context) error {
 }
 
 func (s *Server) CheckAuthz(ctx context.Context, storeID, apiMethod string, modules ...string) error {
-	if s.authorizer != nil {
+	if s.authorizer != nil && !authz.SkipAuthzCheckFromContext(ctx) {
 		claims, found := authn.AuthClaimsFromContext(ctx)
 		if !found {
 			return status.Error(codes.Internal, "client ID not found in context")

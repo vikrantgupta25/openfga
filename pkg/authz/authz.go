@@ -124,9 +124,6 @@ func SkipAuthzCheckFromContext(ctx context.Context) bool {
 
 // Authorize checks if the user has access to the resource.
 func (a *Authorizer) Authorize(ctx context.Context, clientID, storeID, apiMethod string, modules ...string) (bool, error) {
-	if SkipAuthzCheckFromContext(ctx) {
-		return true, nil
-	}
 	relation, err := a.getRelation(apiMethod)
 	if err != nil {
 		return false, err
