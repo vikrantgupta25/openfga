@@ -655,7 +655,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, err
 	}
 
-	if s.IsExperimentallyEnabled(ExperimentalFGAOnFGAParams) {
+	if s.fgaOnFgaIsEnabled() {
 		var err error
 		s.authorizer, err = authz.NewAuthorizer(&authz.Config{
 			StoreID: s.FGAOnFGA.StoreID,
@@ -965,7 +965,7 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 		return nil, err
 	}
 
-	if s.IsExperimentallyEnabled(ExperimentalFGAOnFGAParams) && s.authorizer != nil {
+	if s.fgaOnFgaIsEnabled() && s.authorizer != nil {
 		modules, err := s.getModulesForWriteRequest(req, typesys)
 		if err != nil {
 			return nil, err
@@ -1673,8 +1673,12 @@ func (s *Server) validateConsistencyRequest(c openfgav1.ConsistencyPreference) e
 }
 
 func (s *Server) validateFGAOnFGAEnabled() error {
-	if s.IsExperimentallyEnabled(ExperimentalFGAOnFGAParams) && (s.FGAOnFGA.StoreID == "" || s.FGAOnFGA.ModelID == "") {
+	if s.fgaOnFgaIsEnabled() && (s.FGAOnFGA.StoreID == "" || s.FGAOnFGA.ModelID == "") {
 		return status.Error(codes.InvalidArgument, "FGA on FGA parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-fga-on-fga` configuration option when running OpenFGA server. Additionally, the `--fga-on-fga-store-id` and `--fga-on-fga-model-id` parameters must not be empty")
 	}
 	return nil
+}
+
+func (s *Server) fgaOnFgaIsEnabled() bool {
+	return s.IsExperimentallyEnabled(ExperimentalFGAOnFGAParams) && s.FGAOnFGA.Enabled
 }
