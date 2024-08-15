@@ -1005,7 +1005,7 @@ func (s *Server) getModulesForWriteRequest(req *openfgav1.WriteRequest, typesys 
 	shouldCheckOnStore := false
 	for _, tupleKey := range req.GetWrites().GetTupleKeys() {
 		objType, _ := tuple.SplitObject(tupleKey.GetObject())
-		module, err := typesys.GetModuleForObjectType(objType)
+		module, err := typesys.GetModuleForObjectTypeRelation(objType, tupleKey.GetRelation())
 		if err != nil {
 			return nil, err
 		}
@@ -1019,7 +1019,7 @@ func (s *Server) getModulesForWriteRequest(req *openfgav1.WriteRequest, typesys 
 	if !shouldCheckOnStore {
 		for _, tupleKey := range req.GetDeletes().GetTupleKeys() {
 			objType, _ := tuple.SplitObject(tupleKey.GetObject())
-			module, err := typesys.GetModuleForObjectType(objType)
+			module, err := typesys.GetModuleForObjectTypeRelation(objType, tupleKey.GetRelation())
 			if err != nil {
 				return nil, err
 			}

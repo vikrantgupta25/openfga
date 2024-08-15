@@ -222,7 +222,7 @@ func New(model *openfgav1.AuthorizationModel) *TypeSystem {
 	}
 }
 
-func (t *TypeSystem) GetModuleForObjectType(objectType string) (string, error) {
+func (t *TypeSystem) GetModuleForObjectTypeRelation(objectType string, relation string) (string, error) {
 	// TODO: call language GetModuleForObjectType and memoize the result
 	typeDef, exists := t.GetTypeDefinition(objectType)
 	if !exists {
@@ -231,6 +231,15 @@ func (t *TypeSystem) GetModuleForObjectType(objectType string) (string, error) {
 			Err:        ErrObjectTypeUndefined,
 		}
 	}
+
+    relationsMetadata := typeDef.GetMetadata().GetRelations()
+    relationMetadata, exists := relationsMetadata[relation]
+    if exists {
+        relationModule := relationMetadata.GetModule()
+        if relationModule != "" {
+            return relationModule, nil
+        }
+    }
 
 	return typeDef.GetMetadata().GetModule(), nil
 }
