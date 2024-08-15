@@ -149,7 +149,7 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 	}
 
 	// clientID, ok := claims["azp"].(string)
-	//if !ok {
+	// if !ok {
 	//	clientID, ok = claims["client_id"].(string)
 	//	if !ok {
 	//		clientID = ""

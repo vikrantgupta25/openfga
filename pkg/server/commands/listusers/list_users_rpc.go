@@ -8,6 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -17,7 +19,6 @@ import (
 
 	"github.com/openfga/openfga/internal/concurrency"
 
-	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/throttler/threshold"
 
 	"github.com/openfga/openfga/pkg/telemetry"

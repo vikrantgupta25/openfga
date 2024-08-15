@@ -16,6 +16,8 @@ import (
 	"strings"
 	"time"
 
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
+
 	"github.com/cenkalti/backoff/v4"
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
@@ -48,7 +50,6 @@ import (
 	"github.com/openfga/openfga/internal/authn/presharedkey"
 	"github.com/openfga/openfga/internal/build"
 	authnmw "github.com/openfga/openfga/internal/middleware/authn"
-	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/middleware"
 	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"

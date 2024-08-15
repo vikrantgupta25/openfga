@@ -22,6 +22,8 @@ import (
 	"testing"
 	"time"
 
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
+
 	"github.com/hashicorp/go-retryablehttp"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
@@ -37,7 +39,6 @@ import (
 	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/internal/mocks"
-	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"

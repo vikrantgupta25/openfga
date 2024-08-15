@@ -8,11 +8,12 @@ import (
 	"reflect"
 	"sort"
 
+	"github.com/openfga/openfga/pkg/server/config"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.opentelemetry.io/otel"
 
 	"github.com/openfga/openfga/internal/condition"
-	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 

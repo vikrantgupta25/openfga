@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/openfga/openfga/pkg/server/config"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
@@ -18,7 +20,6 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/openfga/openfga/cmd/run"
-	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"

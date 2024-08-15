@@ -5,10 +5,11 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/openfga/openfga/pkg/server/config"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"

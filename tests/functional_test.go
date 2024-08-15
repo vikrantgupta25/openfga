@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/openfga/openfga/pkg/server/config"
+
 	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -15,7 +17,6 @@ import (
 	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
-	"github.com/openfga/openfga/internal/server/config"
 	checktest "github.com/openfga/openfga/internal/test/check"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
