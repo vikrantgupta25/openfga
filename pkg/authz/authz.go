@@ -10,6 +10,10 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 )
 
+type ctxKey string
+
+const skipAuthz ctxKey = "skip-authz-key"
+
 type Config struct {
 	StoreID string
 	ModelID string
@@ -107,8 +111,22 @@ func (a *Authorizer) ListAuthorizedStores(ctx context.Context, clientID string) 
 	return resp.GetObjects(), nil
 }
 
+// ContextWithSkipAuthzCheck attaches whether to skip authz check to the parent context.
+func ContextWithSkipAuthzCheck(parent context.Context, skipAuthzCheck bool) context.Context {
+	return context.WithValue(parent, skipAuthz, skipAuthzCheck)
+}
+
+// SkipAuthzCheckFromContext returns whether the authorize check can be skipped.
+func SkipAuthzCheckFromContext(ctx context.Context) bool {
+	isSkipped, ok := ctx.Value(skipAuthz).(bool)
+	return isSkipped && ok
+}
+
 // Authorize checks if the user has access to the resource.
 func (a *Authorizer) Authorize(ctx context.Context, clientID, storeID, apiMethod string, modules ...string) (bool, error) {
+	if SkipAuthzCheckFromContext(ctx) {
+		return true, nil
+	}
 	relation, err := a.getRelation(apiMethod)
 	if err != nil {
 		return false, err
