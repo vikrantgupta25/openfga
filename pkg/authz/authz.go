@@ -34,6 +34,8 @@ func NewAuthorizer(config *Config, server ServerInterface, logger logger.Logger)
 	}, nil
 }
 
+// TODO: move all strings to consts here
+
 func (a *Authorizer) getRelation(apiMethod string) (string, error) {
 	switch apiMethod {
 	case "ReadAuthorizationModel", "ReadAuthorizationModels":
@@ -76,7 +78,7 @@ func (a *Authorizer) AuthorizeCreateStore(ctx context.Context, clientID string) 
 	if err != nil {
 		return false, err
 	}
-	allowed, err := a.individualAuthorize(ctx, clientID, relation, fmt.Sprintf(`system:%s`, "fga"), &openfgav1.ContextualTupleKeys{})
+	allowed, err := a.individualAuthorize(ctx, clientID, relation, a.getSystem(), &openfgav1.ContextualTupleKeys{})
 	if !allowed || err != nil {
 		return false, err
 	}
@@ -92,7 +94,7 @@ func (a *Authorizer) ListAuthorizedStores(ctx context.Context, clientID string) 
 	req := &openfgav1.ListObjectsRequest{
 		StoreId:              a.config.StoreID,
 		AuthorizationModelId: a.config.ModelID,
-		User:                 fmt.Sprintf(`application:%s`, clientID),
+		User:                 a.getApplication(clientID),
 		Relation:             relation,
 		Type:                 "store",
 	}
@@ -113,65 +115,18 @@ func (a *Authorizer) Authorize(ctx context.Context, clientID, storeID, apiMethod
 	}
 
 	if len(modules) > 0 {
-		var wg sync.WaitGroup
-		var mu sync.Mutex
-		allowed := false
-		var err error
-		done := make(chan struct{})
-		for _, module := range modules {
-			wg.Add(1)
-			go func(module string) {
-				defer wg.Done()
-				contextualTuples := openfgav1.ContextualTupleKeys{
-					TupleKeys: []*openfgav1.TupleKey{
-						{
-							User:     fmt.Sprintf(`store:%s`, storeID),
-							Relation: "store",
-							Object:   fmt.Sprintf(`module:%s|%s`, storeID, module),
-						},
-					},
-				}
-
-				allowed, err = a.individualAuthorize(ctx, clientID, relation, fmt.Sprintf(`module:%s|%s`, storeID, module), &contextualTuples)
-				mu.Lock()
-				defer mu.Unlock()
-
-				// If any of the modules is allowed, we can return early.
-				if allowed {
-					close(done)
-				}
-			}(module)
-		}
-
-		go func() {
-			wg.Wait()
-			// Only close the channel if we haven't already done so.
-			if !allowed {
-				close(done)
-			}
-		}()
-
-		<-done
-
-		if !allowed || err != nil {
-			return false, err
-		}
-	} else {
-		allowed, err := a.individualAuthorize(ctx, clientID, relation, fmt.Sprintf(`store:%s`, storeID), &openfgav1.ContextualTupleKeys{})
-		if !allowed || err != nil {
-			return false, err
-		}
+		return a.moduleAuthorize(ctx, clientID, relation, storeID, modules)
 	}
 
-	return true, nil
+	return a.individualAuthorize(ctx, clientID, relation, a.getStore(storeID), &openfgav1.ContextualTupleKeys{})
 }
 
-func (a *Authorizer) individualAuthorize(ctx context.Context, clientID string, relation string, object string, contextualTuples *openfgav1.ContextualTupleKeys) (bool, error) {
+func (a *Authorizer) individualAuthorize(ctx context.Context, clientID, relation, object string, contextualTuples *openfgav1.ContextualTupleKeys) (bool, error) {
 	req := &openfgav1.CheckRequest{
 		StoreId:              a.config.StoreID,
 		AuthorizationModelId: a.config.ModelID,
 		TupleKey: &openfgav1.CheckRequestTupleKey{
-			User:     fmt.Sprintf(`application:%s`, clientID),
+			User:     a.getApplication(clientID),
 			Relation: relation,
 			Object:   object,
 		},
@@ -188,4 +143,63 @@ func (a *Authorizer) individualAuthorize(ctx context.Context, clientID string, r
 	}
 
 	return true, nil
+}
+
+func (a *Authorizer) moduleAuthorize(ctx context.Context, clientID, relation, storeID string, modules []string) (bool, error) {
+	var err error
+	var wg sync.WaitGroup
+	errorChannel := make(chan error, len(modules))
+	defer close(errorChannel)
+	done := make(chan struct{})
+	defer close(done)
+
+	for _, module := range modules {
+		wg.Add(1)
+		go func(module string) {
+			defer wg.Done()
+			contextualTuples := openfgav1.ContextualTupleKeys{
+				TupleKeys: []*openfgav1.TupleKey{
+					{
+						User:     a.getStore(storeID),
+						Relation: "store",
+						Object:   a.getModule(storeID, module),
+					},
+				},
+			}
+
+			allowed, err := a.individualAuthorize(ctx, clientID, relation, a.getModule(storeID, module), &contextualTuples)
+
+			if err != nil || !allowed {
+				errorChannel <- err
+			}
+		}(module)
+	}
+
+	go func() {
+		wg.Wait()
+		done <- struct{}{}
+	}()
+
+	select {
+	case err = <-errorChannel:
+		return false, err
+	case <-done:
+		return true, nil
+	}
+}
+
+func (a *Authorizer) getStore(storeID string) string {
+	return fmt.Sprintf(`store:%s`, storeID)
+}
+
+func (a *Authorizer) getApplication(clientID string) string {
+	return fmt.Sprintf(`application:%s`, clientID)
+}
+
+func (a *Authorizer) getModule(storeID, module string) string {
+	return fmt.Sprintf(`module:%s|%s`, storeID, module)
+}
+
+func (a *Authorizer) getSystem() string {
+	return fmt.Sprintf(`system:%s`, "fga")
 }
