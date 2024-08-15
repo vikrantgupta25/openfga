@@ -13,7 +13,6 @@ import (
 
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 
-	"github.com/openfga/openfga/internal/authn"
 	"github.com/openfga/openfga/internal/graph"
 
 	"github.com/openfga/openfga/internal/throttler/threshold"
@@ -35,6 +34,7 @@ import (
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
+	"github.com/openfga/openfga/pkg/authn"
 	"github.com/openfga/openfga/pkg/authz"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/gateway"
@@ -966,7 +966,7 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 		return nil, err
 	}
 
-	if s.fgaOnFgaIsEnabled() && s.authorizer != nil && !authz.SkipAuthzCheckFromContext(ctx) {
+	if s.fgaOnFgaIsEnabled() && s.authorizer != nil {
 		modules, err := s.getModulesForWriteRequest(req, typesys)
 		if err != nil {
 			return nil, err
@@ -1172,7 +1172,7 @@ func (s *Server) CheckWithoutAuthz(ctx context.Context, req *openfgav1.CheckRequ
 func (s *Server) CheckAuthzListStores(ctx context.Context) ([]string, error) {
 	if s.authorizer != nil {
 		claims, found := authn.AuthClaimsFromContext(ctx)
-		if !found {
+		if !found || claims.ClientID == "" {
 			return []string{}, status.Error(codes.Internal, "client ID not found in context")
 		}
 		list, err := s.authorizer.ListAuthorizedStores(ctx, claims.ClientID)
@@ -1187,7 +1187,7 @@ func (s *Server) CheckAuthzListStores(ctx context.Context) ([]string, error) {
 func (s *Server) CheckCreateStoreAuthz(ctx context.Context) error {
 	if s.authorizer != nil {
 		claims, found := authn.AuthClaimsFromContext(ctx)
-		if !found {
+		if !found || claims.ClientID == "" {
 			return status.Error(codes.Internal, "client ID not found in context")
 		}
 		authorized, err := s.authorizer.AuthorizeCreateStore(ctx, claims.ClientID)
@@ -1205,7 +1205,7 @@ func (s *Server) CheckCreateStoreAuthz(ctx context.Context) error {
 func (s *Server) CheckAuthz(ctx context.Context, storeID, apiMethod string, modules ...string) error {
 	if s.authorizer != nil && !authz.SkipAuthzCheckFromContext(ctx) {
 		claims, found := authn.AuthClaimsFromContext(ctx)
-		if !found {
+		if !found || claims.ClientID == "" {
 			return status.Error(codes.Internal, "client ID not found in context")
 		}
 		authorized, err := s.authorizer.Authorize(ctx, claims.ClientID, storeID, apiMethod, modules...)

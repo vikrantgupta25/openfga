@@ -21,6 +21,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/openfga/openfga/internal/authn"
+	authnPkg "github.com/openfga/openfga/pkg/authn"
 )
 
 type RemoteOidcAuthenticator struct {
@@ -69,7 +70,7 @@ func NewRemoteOidcAuthenticator(mainIssuer string, issuerAliases []string, audie
 	return oidc, nil
 }
 
-func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context) (*authn.AuthClaims, error) {
+func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context) (*authnPkg.AuthClaims, error) {
 	authHeader, err := grpcauth.AuthFromMD(requestContext, "Bearer")
 	if err != nil {
 		return nil, authn.ErrMissingBearerToken
@@ -156,7 +157,7 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 	//	}
 	//}
 
-	principal := &authn.AuthClaims{
+	principal := &authnPkg.AuthClaims{
 		Subject:  subject,
 		Scopes:   make(map[string]bool),
 		ClientID: clientID,
