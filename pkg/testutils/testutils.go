@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
+
 	"github.com/cenkalti/backoff/v4"
 	"github.com/google/go-cmp/cmp"
 	"github.com/hashicorp/go-retryablehttp"
@@ -26,8 +28,6 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/structpb"
-
-	serverconfig "github.com/openfga/openfga/internal/server/config"
 )
 
 const (

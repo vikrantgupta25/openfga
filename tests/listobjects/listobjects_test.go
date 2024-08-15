@@ -3,10 +3,11 @@ package listobjects
 import (
 	"testing"
 
+	"github.com/openfga/openfga/pkg/server/config"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.uber.org/goleak"
 
-	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/tests"
 )

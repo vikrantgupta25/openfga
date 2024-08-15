@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/openfga/openfga/pkg/server/config"
+
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
@@ -15,7 +17,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	mockstorage "github.com/openfga/openfga/internal/mocks"
-	"github.com/openfga/openfga/internal/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"

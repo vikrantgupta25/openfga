@@ -22,6 +22,8 @@ import (
 	"testing"
 	"time"
 
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
+
 	"github.com/hashicorp/go-retryablehttp"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
@@ -37,7 +39,6 @@ import (
 	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/internal/mocks"
-	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
@@ -1348,7 +1349,7 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 		require.Equal(t, "130", viper.GetString("dispatch-throttling-max-threshold"))
 		require.Equal(t, "120", viper.GetString("max-condition-evaluation-cost"))
 		require.Equal(t, uint64(120), viper.GetUint64("max-condition-evaluation-cost"))
-		require.Equal(t, true, viper.GetBool("fga-on-fga-enabled"))
+		require.True(t, viper.GetBool("fga-on-fga-enabled"))
 		require.Equal(t, "12345", viper.GetString("fga-on-fga-store-id"))
 		require.Equal(t, "67891", viper.GetString("fga-on-fga-model-id"))
 
