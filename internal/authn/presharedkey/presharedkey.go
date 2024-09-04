@@ -6,14 +6,15 @@ import (
 
 	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 
-	"github.com/openfga/openfga/internal/authn"
+	internalAuthN "github.com/openfga/openfga/internal/authn"
+	"github.com/openfga/openfga/pkg/authn"
 )
 
 type PresharedKeyAuthenticator struct {
 	ValidKeys map[string]struct{}
 }
 
-var _ authn.Authenticator = (*PresharedKeyAuthenticator)(nil)
+var _ internalAuthN.Authenticator = (*PresharedKeyAuthenticator)(nil)
 
 func NewPresharedKeyAuthenticator(validKeys []string) (*PresharedKeyAuthenticator, error) {
 	if len(validKeys) < 1 {
@@ -30,7 +31,7 @@ func NewPresharedKeyAuthenticator(validKeys []string) (*PresharedKeyAuthenticato
 func (pka *PresharedKeyAuthenticator) Authenticate(ctx context.Context) (*authn.AuthClaims, error) {
 	authHeader, err := grpcauth.AuthFromMD(ctx, "Bearer")
 	if err != nil {
-		return nil, authn.ErrMissingBearerToken
+		return nil, internalAuthN.ErrMissingBearerToken
 	}
 
 	if _, found := pka.ValidKeys[authHeader]; found {
@@ -39,7 +40,7 @@ func (pka *PresharedKeyAuthenticator) Authenticate(ctx context.Context) (*authn.
 		}, nil
 	}
 
-	return nil, authn.ErrUnauthenticated
+	return nil, internalAuthN.ErrUnauthenticated
 }
 
 func (pka *PresharedKeyAuthenticator) Close() {}
