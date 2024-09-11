@@ -17,7 +17,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/openfga/openfga/internal/condition"
-	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -83,8 +82,8 @@ func (s *Server) ListUsers(
 		telemetry.TraceError(span, err)
 
 		switch {
-		case errors.Is(err, graph.ErrResolutionDepthExceeded):
-			return nil, serverErrors.AuthorizationModelResolutionTooComplex
+		// case errors.Is(err, graph.ErrResolutionDepthExceeded):
+		//	return nil, serverErrors.AuthorizationModelResolutionTooComplex
 		case errors.Is(err, condition.ErrEvaluationFailed):
 			return nil, serverErrors.ValidationError(err)
 		default:

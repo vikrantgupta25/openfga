@@ -15,12 +15,24 @@ type SortedSet interface {
 	Add(value string)
 	Exists(value string) bool
 
+	Merge(SortedSet) SortedSet
+
 	// Values returns the elements in the set in sorted order (ascending).
 	Values() []string
 }
 
 type RedBlackTreeSet struct {
 	inner *redblacktree.Tree
+}
+
+func (r *RedBlackTreeSet) Merge(otherSet SortedSet) SortedSet {
+	merged := NewSortedSet()
+	for _, v := range r.Values() {
+		if otherSet.Exists(v) {
+			merged.Add(v)
+		}
+	}
+	return merged
 }
 
 var _ SortedSet = (*RedBlackTreeSet)(nil)

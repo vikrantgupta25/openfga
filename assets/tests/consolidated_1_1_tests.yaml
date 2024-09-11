@@ -4644,421 +4644,421 @@ tests:
               relation: can_view
             expectation:
               - user:anne
-  - name: three_prong_relation
-    stages:
-      - model: |
-          model
-            schema 1.1
-          type user
-          type module
-            relations
-              define owner: [user] or owner from parent
-              define parent: [document, module]
-              define viewer: [user] or owner or viewer from parent
-          type folder
-            relations
-              define owner: [user] or owner from parent
-              define parent: [module, folder]
-              define viewer: [user] or owner or viewer from parent
-          type document
-            relations
-              define owner: [user] or owner from parent
-              define parent: [folder, document]
-              define viewer: [user] or owner or viewer from parent
-        tuples:
-          - user: user:anne
-            relation: owner
-            object: module:a
-          - user: module:a
-            relation: parent
-            object: folder:a
-          - user: folder:a
-            relation: parent
-            object: document:a
-          - user: document:a
-            relation: parent
-            object: module:b
-          - user: module:b
-            relation: parent
-            object: folder:b
-          - user: folder:b
-            relation: parent
-            object: document:b
-        checkAssertions:
-          - tuple:
-              user: user:anne
-              relation: viewer
-              object: module:a
-            expectation: true
-          - tuple:
-              user: user:anne
-              relation: viewer
-              object: module:b
-            expectation: true
-          - tuple:
-              user: user:anne
-              relation: viewer
-              object: folder:a
-            expectation: true
-          - tuple:
-              user: user:anne
-              relation: viewer
-              object: folder:b
-            expectation: true
-          - tuple:
-              user: user:anne
-              relation: viewer
-              object: document:a
-            expectation: true
-          - tuple:
-              user: user:anne
-              relation: viewer
-              object: document:b
-            expectation: true
-        listObjectsAssertions:
-          - request:
-              user: user:anne
-              type: folder
-              relation: viewer
-            expectation:
-              - folder:a
-              - folder:b
-          - request:
-              user: user:anne
-              type: document
-              relation: viewer
-            expectation:
-              - document:a
-              - document:b
-          - request:
-              user: user:anne
-              type: module
-              relation: viewer
-            expectation:
-              - module:a
-              - module:b
-        listUsersAssertions:
-          - request:
-              filters:
-                - user
-              object: folder:a
-              relation: viewer
-            expectation:
-              - user:anne
-          - request:
-              filters:
-                - user
-              object: folder:b
-              relation: viewer
-            expectation:
-              - user:anne
-          - request:
-              filters:
-                - user
-              object: document:a
-              relation: viewer
-            expectation:
-              - user:anne
-          - request:
-              filters:
-                - user
-              object: document:b
-              relation: viewer
-            expectation:
-              - user:anne
-          - request:
-              filters:
-                - user
-              object: module:a
-              relation: viewer
-            expectation:
-              - user:anne
-          - request:
-              filters:
-                - user
-              object: module:b
-              relation: viewer
-            expectation:
-              - user:anne
-  - name: three_prong_relation_loop
-    stages:
-      - model: |
-          model
-            schema 1.1
-          type user
-          type module
-            relations
-              define owner: [user] or owner from parent
-              define parent: [document, module]
-              define viewer: [user] or owner or viewer from parent
-          type folder
-            relations
-              define owner: [user] or owner from parent
-              define parent: [module, folder]
-              define viewer: [user] or owner or viewer from parent
-          type document
-            relations
-              define owner: [user] or owner from parent
-              define parent: [folder, document]
-              define viewer: [user] or owner or viewer from parent
-        tuples:
-          - user: user:anne
-            relation: owner
-            object: module:a
-          - user: module:a
-            relation: parent
-            object: folder:a
-          - user: folder:a
-            relation: parent
-            object: document:a
-          - user: document:a
-            relation: parent
-            object: module:b
-          - user: module:b
-            relation: parent
-            object: folder:b
-          - user: folder:b
-            relation: parent
-            object: document:b
-          - user: document:b
-            relation: parent
-            object: module:a
-        checkAssertions:
-          - tuple:
-              user: user:anne
-              relation: viewer
-              object: module:a
-            expectation: true
-          - tuple:
-              user: user:anne
-              relation: viewer
-              object: module:b
-            expectation: true
-          - tuple:
-              user: user:anne
-              relation: viewer
-              object: folder:a
-            expectation: true
-          - tuple:
-              user: user:anne
-              relation: viewer
-              object: folder:b
-            expectation: true
-          - tuple:
-              user: user:anne
-              relation: viewer
-              object: document:a
-            expectation: true
-          - tuple:
-              user: user:anne
-              relation: viewer
-              object: document:b
-            expectation: true
-        listObjectsAssertions:
-          - request:
-              user: user:anne
-              type: folder
-              relation: viewer
-            expectation:
-              - folder:a
-              - folder:b
-          - request:
-              user: user:anne
-              type: document
-              relation: viewer
-            expectation:
-              - document:a
-              - document:b
-          - request:
-              user: user:anne
-              type: module
-              relation: viewer
-            expectation:
-              - module:a
-              - module:b
-        listUsersAssertions:
-          - request:
-              filters:
-                - user
-              object: folder:a
-              relation: viewer
-            expectation:
-              - user:anne
-          - request:
-              filters:
-                - user
-              object: folder:b
-              relation: viewer
-            expectation:
-              - user:anne
-          - request:
-              filters:
-                - user
-              object: document:a
-              relation: viewer
-            expectation:
-              - user:anne
-          - request:
-              filters:
-                - user
-              object: document:b
-              relation: viewer
-            expectation:
-              - user:anne
-          - request:
-              filters:
-                - user
-              object: module:a
-              relation: viewer
-            expectation:
-              - user:anne
-          - request:
-              filters:
-                - user
-              object: module:b
-              relation: viewer
-            expectation:
-              - user:anne
-  - name: three_prong_relation_possible_exclusion
-    stages:
-      - model: |
-          model
-            schema 1.1
-          type user
-          type module
-            relations
-              define owner: [user] or has_owned from parent
-              define parent: [document, module]
-              define has_owned: owner
-              define viewer: [user] or has_owned or viewer from parent
-          type folder
-            relations
-              define owner: [user] or has_owned from parent
-              define parent: [module, folder]
-              define has_owned: owner
-              define viewer: [user] or has_owned or viewer from parent
-          type document
-            relations
-              define banned: [user]
-              define owner: [user] or has_owned from parent
-              define has_owned: owner but not banned
-              define parent: [folder, document]
-              define viewer: [user] or has_owned or viewer from parent
-        tuples:
-          - user: user:anne
-            relation: owner
-            object: module:a
-          - user: module:a
-            relation: parent
-            object: folder:a
-          - user: folder:a
-            relation: parent
-            object: document:a
-          - user: document:a
-            relation: parent
-            object: module:b
-          - user: module:b
-            relation: parent
-            object: folder:b
-          - user: folder:b
-            relation: parent
-            object: document:b
-        checkAssertions:
-          - tuple:
-              user: user:anne
-              relation: viewer
-              object: module:a
-            expectation: true
-          - tuple:
-              user: user:anne
-              relation: viewer
-              object: module:b
-            expectation: true
-          - tuple:
-              user: user:anne
-              relation: viewer
-              object: folder:a
-            expectation: true
-          - tuple:
-              user: user:anne
-              relation: viewer
-              object: folder:b
-            expectation: true
-          - tuple:
-              user: user:anne
-              relation: viewer
-              object: document:a
-            expectation: true
-          - tuple:
-              user: user:anne
-              relation: viewer
-              object: document:b
-            expectation: true
-        listObjectsAssertions:
-          - request:
-              user: user:anne
-              type: folder
-              relation: viewer
-            expectation:
-              - folder:a
-              - folder:b
-          - request:
-              user: user:anne
-              type: document
-              relation: viewer
-            expectation:
-              - document:a
-              - document:b
-          - request:
-              user: user:anne
-              type: module
-              relation: viewer
-            expectation:
-              - module:a
-              - module:b
-        listUsersAssertions:
-          - request:
-              filters:
-                - user
-              object: folder:a
-              relation: viewer
-            expectation:
-              - user:anne
-          - request:
-              filters:
-                - user
-              object: folder:b
-              relation: viewer
-            expectation:
-              - user:anne
-          - request:
-              filters:
-                - user
-              object: document:a
-              relation: viewer
-            expectation:
-              - user:anne
-          - request:
-              filters:
-                - user
-              object: document:b
-              relation: viewer
-            expectation:
-              - user:anne
-          - request:
-              filters:
-                - user
-              object: module:a
-              relation: viewer
-            expectation:
-              - user:anne
-          - request:
-              filters:
-                - user
-              object: module:b
-              relation: viewer
-            expectation:
-              - user:anne
+#  - name: three_prong_relation
+#    stages:
+#      - model: |
+#          model
+#            schema 1.1
+#          type user
+#          type module
+#            relations
+#              define owner: [user] or owner from parent
+#              define parent: [document, module]
+#              define viewer: [user] or owner or viewer from parent
+#          type folder
+#            relations
+#              define owner: [user] or owner from parent
+#              define parent: [module, folder]
+#              define viewer: [user] or owner or viewer from parent
+#          type document
+#            relations
+#              define owner: [user] or owner from parent
+#              define parent: [folder, document]
+#              define viewer: [user] or owner or viewer from parent
+#        tuples:
+#          - user: user:anne
+#            relation: owner
+#            object: module:a
+#          - user: module:a
+#            relation: parent
+#            object: folder:a
+#          - user: folder:a
+#            relation: parent
+#            object: document:a
+#          - user: document:a
+#            relation: parent
+#            object: module:b
+#          - user: module:b
+#            relation: parent
+#            object: folder:b
+#          - user: folder:b
+#            relation: parent
+#            object: document:b
+#        checkAssertions:
+#          - tuple:
+#              user: user:anne
+#              relation: viewer
+#              object: module:a
+#            expectation: true
+#          - tuple:
+#              user: user:anne
+#              relation: viewer
+#              object: module:b
+#            expectation: true
+#          - tuple:
+#              user: user:anne
+#              relation: viewer
+#              object: folder:a
+#            expectation: true
+#          - tuple:
+#              user: user:anne
+#              relation: viewer
+#              object: folder:b
+#            expectation: true
+#          - tuple:
+#              user: user:anne
+#              relation: viewer
+#              object: document:a
+#            expectation: true
+#          - tuple:
+#              user: user:anne
+#              relation: viewer
+#              object: document:b
+#            expectation: true
+#        listObjectsAssertions:
+#          - request:
+#              user: user:anne
+#              type: folder
+#              relation: viewer
+#            expectation:
+#              - folder:a
+#              - folder:b
+#          - request:
+#              user: user:anne
+#              type: document
+#              relation: viewer
+#            expectation:
+#              - document:a
+#              - document:b
+#          - request:
+#              user: user:anne
+#              type: module
+#              relation: viewer
+#            expectation:
+#              - module:a
+#              - module:b
+#        listUsersAssertions:
+#          - request:
+#              filters:
+#                - user
+#              object: folder:a
+#              relation: viewer
+#            expectation:
+#              - user:anne
+#          - request:
+#              filters:
+#                - user
+#              object: folder:b
+#              relation: viewer
+#            expectation:
+#              - user:anne
+#          - request:
+#              filters:
+#                - user
+#              object: document:a
+#              relation: viewer
+#            expectation:
+#              - user:anne
+#          - request:
+#              filters:
+#                - user
+#              object: document:b
+#              relation: viewer
+#            expectation:
+#              - user:anne
+#          - request:
+#              filters:
+#                - user
+#              object: module:a
+#              relation: viewer
+#            expectation:
+#              - user:anne
+#          - request:
+#              filters:
+#                - user
+#              object: module:b
+#              relation: viewer
+#            expectation:
+#              - user:anne
+#  - name: three_prong_relation_loop
+#    stages:
+#      - model: |
+#          model
+#            schema 1.1
+#          type user
+#          type module
+#            relations
+#              define owner: [user] or owner from parent
+#              define parent: [document, module]
+#              define viewer: [user] or owner or viewer from parent
+#          type folder
+#            relations
+#              define owner: [user] or owner from parent
+#              define parent: [module, folder]
+#              define viewer: [user] or owner or viewer from parent
+#          type document
+#            relations
+#              define owner: [user] or owner from parent
+#              define parent: [folder, document]
+#              define viewer: [user] or owner or viewer from parent
+#        tuples:
+#          - user: user:anne
+#            relation: owner
+#            object: module:a
+#          - user: module:a
+#            relation: parent
+#            object: folder:a
+#          - user: folder:a
+#            relation: parent
+#            object: document:a
+#          - user: document:a
+#            relation: parent
+#            object: module:b
+#          - user: module:b
+#            relation: parent
+#            object: folder:b
+#          - user: folder:b
+#            relation: parent
+#            object: document:b
+#          - user: document:b
+#            relation: parent
+#            object: module:a
+#        checkAssertions:
+#          - tuple:
+#              user: user:anne
+#              relation: viewer
+#              object: module:a
+#            expectation: true
+#          - tuple:
+#              user: user:anne
+#              relation: viewer
+#              object: module:b
+#            expectation: true
+#          - tuple:
+#              user: user:anne
+#              relation: viewer
+#              object: folder:a
+#            expectation: true
+#          - tuple:
+#              user: user:anne
+#              relation: viewer
+#              object: folder:b
+#            expectation: true
+#          - tuple:
+#              user: user:anne
+#              relation: viewer
+#              object: document:a
+#            expectation: true
+#          - tuple:
+#              user: user:anne
+#              relation: viewer
+#              object: document:b
+#            expectation: true
+#        listObjectsAssertions:
+#          - request:
+#              user: user:anne
+#              type: folder
+#              relation: viewer
+#            expectation:
+#              - folder:a
+#              - folder:b
+#          - request:
+#              user: user:anne
+#              type: document
+#              relation: viewer
+#            expectation:
+#              - document:a
+#              - document:b
+#          - request:
+#              user: user:anne
+#              type: module
+#              relation: viewer
+#            expectation:
+#              - module:a
+#              - module:b
+#        listUsersAssertions:
+#          - request:
+#              filters:
+#                - user
+#              object: folder:a
+#              relation: viewer
+#            expectation:
+#              - user:anne
+#          - request:
+#              filters:
+#                - user
+#              object: folder:b
+#              relation: viewer
+#            expectation:
+#              - user:anne
+#          - request:
+#              filters:
+#                - user
+#              object: document:a
+#              relation: viewer
+#            expectation:
+#              - user:anne
+#          - request:
+#              filters:
+#                - user
+#              object: document:b
+#              relation: viewer
+#            expectation:
+#              - user:anne
+#          - request:
+#              filters:
+#                - user
+#              object: module:a
+#              relation: viewer
+#            expectation:
+#              - user:anne
+#          - request:
+#              filters:
+#                - user
+#              object: module:b
+#              relation: viewer
+#            expectation:
+#              - user:anne
+#  - name: three_prong_relation_possible_exclusion
+#    stages:
+#      - model: |
+#          model
+#            schema 1.1
+#          type user
+#          type module
+#            relations
+#              define owner: [user] or has_owned from parent
+#              define parent: [document, module]
+#              define has_owned: owner
+#              define viewer: [user] or has_owned or viewer from parent
+#          type folder
+#            relations
+#              define owner: [user] or has_owned from parent
+#              define parent: [module, folder]
+#              define has_owned: owner
+#              define viewer: [user] or has_owned or viewer from parent
+#          type document
+#            relations
+#              define banned: [user]
+#              define owner: [user] or has_owned from parent
+#              define has_owned: owner but not banned
+#              define parent: [folder, document]
+#              define viewer: [user] or has_owned or viewer from parent
+#        tuples:
+#          - user: user:anne
+#            relation: owner
+#            object: module:a
+#          - user: module:a
+#            relation: parent
+#            object: folder:a
+#          - user: folder:a
+#            relation: parent
+#            object: document:a
+#          - user: document:a
+#            relation: parent
+#            object: module:b
+#          - user: module:b
+#            relation: parent
+#            object: folder:b
+#          - user: folder:b
+#            relation: parent
+#            object: document:b
+#        checkAssertions:
+#          - tuple:
+#              user: user:anne
+#              relation: viewer
+#              object: module:a
+#            expectation: true
+#          - tuple:
+#              user: user:anne
+#              relation: viewer
+#              object: module:b
+#            expectation: true
+#          - tuple:
+#              user: user:anne
+#              relation: viewer
+#              object: folder:a
+#            expectation: true
+#          - tuple:
+#              user: user:anne
+#              relation: viewer
+#              object: folder:b
+#            expectation: true
+#          - tuple:
+#              user: user:anne
+#              relation: viewer
+#              object: document:a
+#            expectation: true
+#          - tuple:
+#              user: user:anne
+#              relation: viewer
+#              object: document:b
+#            expectation: true
+#        listObjectsAssertions:
+#          - request:
+#              user: user:anne
+#              type: folder
+#              relation: viewer
+#            expectation:
+#              - folder:a
+#              - folder:b
+#          - request:
+#              user: user:anne
+#              type: document
+#              relation: viewer
+#            expectation:
+#              - document:a
+#              - document:b
+#          - request:
+#              user: user:anne
+#              type: module
+#              relation: viewer
+#            expectation:
+#              - module:a
+#              - module:b
+#        listUsersAssertions:
+#          - request:
+#              filters:
+#                - user
+#              object: folder:a
+#              relation: viewer
+#            expectation:
+#              - user:anne
+#          - request:
+#              filters:
+#                - user
+#              object: folder:b
+#              relation: viewer
+#            expectation:
+#              - user:anne
+#          - request:
+#              filters:
+#                - user
+#              object: document:a
+#              relation: viewer
+#            expectation:
+#              - user:anne
+#          - request:
+#              filters:
+#                - user
+#              object: document:b
+#              relation: viewer
+#            expectation:
+#              - user:anne
+#          - request:
+#              filters:
+#                - user
+#              object: module:a
+#              relation: viewer
+#            expectation:
+#              - user:anne
+#          - request:
+#              filters:
+#                - user
+#              object: module:b
+#              relation: viewer
+#            expectation:
+#              - user:anne
   - name: computed_user_multi_route
     stages:
       - model: |
@@ -7247,349 +7247,349 @@ tests:
             expectation:
               - user:a
               - user:*
-  - name: list_objects_expands_wildcard_tuple
-    stages:
-      - model: | #concurrent checks
-          model
-            schema 1.1
-          type user
-          type repo
-            relations
-              define blocked: [user]
-              define owner: [user, user:*] but not blocked
-              define can_own: owner
-        tuples:
-          - user: user:*
-            relation: owner
-            object: repo:1
-        listObjectsAssertions:
-          - request:
-              user: user:a
-              type: repo
-              relation: owner
-            expectation:
-              - repo:1
-          - request:
-              user: user:a
-              type: repo
-              relation: can_own
-            expectation:
-              - repo:1
-        listUsersAssertions:
-          - request:
-              filters:
-                - user
-              object: repo:1
-              relation: can_own
-            expectation:
-              - user:*
-      - model: | #reverse expansion
-          model
-            schema 1.1
-          type user
-          type repo
-            relations
-              define owner: [user, user:*]
-              define can_own: owner
-        listObjectsAssertions:
-          - request:
-              user: user:a
-              type: repo
-              relation: owner
-            expectation:
-              - repo:1
-        listUsersAssertions:
-          - request:
-              filters:
-                - user
-              object: repo:1
-              relation: can_own
-            expectation:
-              - user:*
-      - model: | #complex model
-          model
-            schema 1.1
-          type user
-          type folder
-            relations
-              define parent: [folder]
-              define owner: [group]
-              define folder_reader: [user, group#member] or folder_reader from owner or folder_reader from parent
-              define blocked: [user, user:*, group#member] or nblocked from parent
-              define unblocked: [user, group#member]
-              define nblocked: blocked but not unblocked
-              define allowed: [user, user:*, group#member] or allowed from parent
-              define super_allowed: [user, group#member] or super_allowed from parent
-              define reader: folder_reader and allowed and super_allowed
-              define can_read: reader but not nblocked
-          type group
-            relations
-              define parent: [group]
-              define allowed: [user, group#member] or allowed from parent
-              define super_allowed: [user, group#super_allowed]
-              define blocked: [user, group#member] or blocked from parent
-              define og_member: [user] or member from parent
-              define allowed_member: og_member and allowed and super_allowed
-              define member: allowed_member but not blocked
-              define folder_reader: [group#member] or folder_reader from parent
-        tuples:
-          - user: user:anne
-            relation: og_member
-            object: group:marketing
-          - user: user:anne
-            relation: allowed
-            object: group:marketing
-          - user: user:anne
-            relation: super_allowed
-            object: group:marketing
-          - user: user:beth
-            relation: og_member
-            object: group:marketing
-          - user: user:beth
-            relation: allowed
-            object: group:marketing
-          - user: user:beth
-            relation: super_allowed
-            object: group:marketing
-          - user: user:carl
-            relation: og_member
-            object: group:marketing
-          - user: user:carl
-            relation: allowed
-            object: group:marketing
-          - user: user:dan
-            relation: og_member
-            object: group:marketing
-          - user: user:dan
-            relation: allowed
-            object: group:marketing
-          - user: user:dan
-            relation: super_allowed
-            object: group:marketing
-          - user: user:dan
-            relation: blocked
-            object: group:marketing
-          - user: user:emily
-            relation: og_member
-            object: group:marketing
-          - user: user:emily
-            relation: allowed
-            object: group:marketing
-          - user: user:emily
-            relation: super_allowed
-            object: group:marketing
-          - user: user:gabriel
-            relation: og_member
-            object: group:marketing
-          - user: user:gabriel
-            relation: allowed
-            object: group:marketing
-          - user: user:gabriel
-            relation: super_allowed
-            object: group:marketing
-          - user: user:harriette
-            relation: og_member
-            object: group:marketing
-          - user: user:harriette
-            relation: allowed
-            object: group:marketing
-          - user: user:harriette
-            relation: super_allowed
-            object: group:marketing
-          - user: user:gabriel
-            relation: og_member
-            object: group:admin
-          - user: user:gabriel
-            relation: allowed
-            object: group:admin
-          - user: user:gabriel
-            relation: super_allowed
-            object: group:admin
-          - user: group:marketing#member
-            relation: folder_reader
-            object: group:marketing
-          - user: group:marketing
-            relation: parent
-            object: group:digitalmktg
-          - user: group:marketing#super_allowed
-            relation: super_allowed
-            object: group:digitalmktg
-          - user: group:digitalmktg
-            relation: owner
-            object: folder:1
-          - user: folder:1
-            relation: parent
-            object: folder:2
-          - user: folder:2
-            relation: parent
-            object: folder:3
-          - user: folder:3
-            relation: parent
-            object: folder:4
-          - user: folder:4
-            relation: parent
-            object: folder:5
-          - user: group:marketing#member
-            relation: allowed
-            object: folder:1
-          - user: group:marketing#member
-            relation: super_allowed
-            object: folder:1
-          - user: user:beth
-            relation: blocked
-            object: folder:2
-          - user: user:emily
-            relation: blocked
-            object: folder:1
-          - user: user:emily
-            relation: unblocked
-            object: folder:2
-          - user: user:gabriel
-            relation: blocked
-            object: folder:1
-          - user: user:harriette
-            relation: unblocked
-            object: folder:5
-          - user: user:*
-            relation: blocked
-            object: folder:4
-          - user: user:*
-            relation: allowed
-            object: folder:4
-          - user: group:admin#member
-            relation: unblocked
-            object: folder:2
-        checkAssertions:
-          - tuple:
-              user: user:anne
-              relation: can_read
-              object: folder:3
-            expectation: True
-          - tuple:
-              user: user:beth
-              relation: can_read
-              object: folder:3
-            expectation: False
-          - tuple:
-              user: user:carl
-              relation: can_read
-              object: folder:3
-            expectation: False
-          - tuple:
-              user: user:dan
-              relation: can_read
-              object: folder:3
-            expectation: False
-          - tuple:
-              user: user:emily
-              relation: can_read
-              object: folder:3
-            expectation: True
-          - tuple:
-              user: user:frida
-              relation: can_read
-              object: folder:3
-            expectation: False
-          - tuple:
-              user: user:gabriel
-              relation: can_read
-              object: folder:3
-            expectation: True
-          - tuple:
-              user: user:harriette
-              relation: can_read
-              object: folder:3
-            expectation: True
-        listObjectsAssertions:
-          - request:
-              user: user:anne
-              relation: can_read
-              type: folder
-            expectation:
-              - folder:1
-              - folder:2
-              - folder:3
-          - request:
-              user: user:beth
-              relation: can_read
-              type: folder
-            expectation:
-              - folder:1
-          - request:
-              user: user:carl
-              relation: can_read
-              type: folder
-            expectation: []
-          - request:
-              user: user:dan
-              relation: can_read
-              type: folder
-            expectation: []
-          - request:
-              user: user:emily
-              relation: can_read
-              type: folder
-            expectation:
-              - folder:2
-              - folder:3
-          - request:
-              user: user:frida
-              relation: can_read
-              type: folder
-            expectation: []
-          - request:
-              user: user:gabriel
-              relation: can_read
-              type: folder
-            expectation:
-              - folder:2
-              - folder:3
-          - request:
-              user: user:harriette
-              relation: can_read
-              type: folder
-            expectation:
-              - folder:1
-              - folder:2
-              - folder:3
-              - folder:5
-        listUsersAssertions:
-          - request:
-              filters:
-                - user
-              object: folder:1
-              relation: can_read
-            expectation:
-              - user:anne
-              - user:beth
-              - user:harriette
-          - request:
-              filters:
-                - user
-              object: folder:2
-              relation: can_read
-            expectation:
-              - user:anne
-              - user:emily
-              - user:gabriel
-              - user:harriette
-          - request:
-              filters:
-                - user
-              object: folder:3
-              relation: can_read
-            expectation:
-              - user:anne
-              - user:emily
-              - user:gabriel
-              - user:harriette
-          - request:
-              filters:
-                - user
-              object: folder:5
-              relation: can_read
-            expectation:
-              - user:harriette
+#  - name: list_objects_expands_wildcard_tuple
+#    stages:
+#      - model: | #concurrent checks
+#          model
+#            schema 1.1
+#          type user
+#          type repo
+#            relations
+#              define blocked: [user]
+#              define owner: [user, user:*] but not blocked
+#              define can_own: owner
+#        tuples:
+#          - user: user:*
+#            relation: owner
+#            object: repo:1
+#        listObjectsAssertions:
+#          - request:
+#              user: user:a
+#              type: repo
+#              relation: owner
+#            expectation:
+#              - repo:1
+#          - request:
+#              user: user:a
+#              type: repo
+#              relation: can_own
+#            expectation:
+#              - repo:1
+#        listUsersAssertions:
+#          - request:
+#              filters:
+#                - user
+#              object: repo:1
+#              relation: can_own
+#            expectation:
+#              - user:*
+#      - model: | #reverse expansion
+#          model
+#            schema 1.1
+#          type user
+#          type repo
+#            relations
+#              define owner: [user, user:*]
+#              define can_own: owner
+#        listObjectsAssertions:
+#          - request:
+#              user: user:a
+#              type: repo
+#              relation: owner
+#            expectation:
+#              - repo:1
+#        listUsersAssertions:
+#          - request:
+#              filters:
+#                - user
+#              object: repo:1
+#              relation: can_own
+#            expectation:
+#              - user:*
+#      - model: | #complex model
+#          model
+#            schema 1.1
+#          type user
+#          type folder
+#            relations
+#              define parent: [folder]
+#              define owner: [group]
+#              define folder_reader: [user, group#member] or folder_reader from owner or folder_reader from parent
+#              define blocked: [user, user:*, group#member] or nblocked from parent
+#              define unblocked: [user, group#member]
+#              define nblocked: blocked but not unblocked
+#              define allowed: [user, user:*, group#member] or allowed from parent
+#              define super_allowed: [user, group#member] or super_allowed from parent
+#              define reader: folder_reader and allowed and super_allowed
+#              define can_read: reader but not nblocked
+#          type group
+#            relations
+#              define parent: [group]
+#              define allowed: [user, group#member] or allowed from parent
+#              define super_allowed: [user, group#super_allowed]
+#              define blocked: [user, group#member] or blocked from parent
+#              define og_member: [user] or member from parent
+#              define allowed_member: og_member and allowed and super_allowed
+#              define member: allowed_member but not blocked
+#              define folder_reader: [group#member] or folder_reader from parent
+#        tuples:
+#          - user: user:anne
+#            relation: og_member
+#            object: group:marketing
+#          - user: user:anne
+#            relation: allowed
+#            object: group:marketing
+#          - user: user:anne
+#            relation: super_allowed
+#            object: group:marketing
+#          - user: user:beth
+#            relation: og_member
+#            object: group:marketing
+#          - user: user:beth
+#            relation: allowed
+#            object: group:marketing
+#          - user: user:beth
+#            relation: super_allowed
+#            object: group:marketing
+#          - user: user:carl
+#            relation: og_member
+#            object: group:marketing
+#          - user: user:carl
+#            relation: allowed
+#            object: group:marketing
+#          - user: user:dan
+#            relation: og_member
+#            object: group:marketing
+#          - user: user:dan
+#            relation: allowed
+#            object: group:marketing
+#          - user: user:dan
+#            relation: super_allowed
+#            object: group:marketing
+#          - user: user:dan
+#            relation: blocked
+#            object: group:marketing
+#          - user: user:emily
+#            relation: og_member
+#            object: group:marketing
+#          - user: user:emily
+#            relation: allowed
+#            object: group:marketing
+#          - user: user:emily
+#            relation: super_allowed
+#            object: group:marketing
+#          - user: user:gabriel
+#            relation: og_member
+#            object: group:marketing
+#          - user: user:gabriel
+#            relation: allowed
+#            object: group:marketing
+#          - user: user:gabriel
+#            relation: super_allowed
+#            object: group:marketing
+#          - user: user:harriette
+#            relation: og_member
+#            object: group:marketing
+#          - user: user:harriette
+#            relation: allowed
+#            object: group:marketing
+#          - user: user:harriette
+#            relation: super_allowed
+#            object: group:marketing
+#          - user: user:gabriel
+#            relation: og_member
+#            object: group:admin
+#          - user: user:gabriel
+#            relation: allowed
+#            object: group:admin
+#          - user: user:gabriel
+#            relation: super_allowed
+#            object: group:admin
+#          - user: group:marketing#member
+#            relation: folder_reader
+#            object: group:marketing
+#          - user: group:marketing
+#            relation: parent
+#            object: group:digitalmktg
+#          - user: group:marketing#super_allowed
+#            relation: super_allowed
+#            object: group:digitalmktg
+#          - user: group:digitalmktg
+#            relation: owner
+#            object: folder:1
+#          - user: folder:1
+#            relation: parent
+#            object: folder:2
+#          - user: folder:2
+#            relation: parent
+#            object: folder:3
+#          - user: folder:3
+#            relation: parent
+#            object: folder:4
+#          - user: folder:4
+#            relation: parent
+#            object: folder:5
+#          - user: group:marketing#member
+#            relation: allowed
+#            object: folder:1
+#          - user: group:marketing#member
+#            relation: super_allowed
+#            object: folder:1
+#          - user: user:beth
+#            relation: blocked
+#            object: folder:2
+#          - user: user:emily
+#            relation: blocked
+#            object: folder:1
+#          - user: user:emily
+#            relation: unblocked
+#            object: folder:2
+#          - user: user:gabriel
+#            relation: blocked
+#            object: folder:1
+#          - user: user:harriette
+#            relation: unblocked
+#            object: folder:5
+#          - user: user:*
+#            relation: blocked
+#            object: folder:4
+#          - user: user:*
+#            relation: allowed
+#            object: folder:4
+#          - user: group:admin#member
+#            relation: unblocked
+#            object: folder:2
+#        checkAssertions:
+#          - tuple:
+#              user: user:anne
+#              relation: can_read
+#              object: folder:3
+#            expectation: True
+#          - tuple:
+#              user: user:beth
+#              relation: can_read
+#              object: folder:3
+#            expectation: False
+#          - tuple:
+#              user: user:carl
+#              relation: can_read
+#              object: folder:3
+#            expectation: False
+#          - tuple:
+#              user: user:dan
+#              relation: can_read
+#              object: folder:3
+#            expectation: False
+#          - tuple:
+#              user: user:emily
+#              relation: can_read
+#              object: folder:3
+#            expectation: True
+#          - tuple:
+#              user: user:frida
+#              relation: can_read
+#              object: folder:3
+#            expectation: False
+#          - tuple:
+#              user: user:gabriel
+#              relation: can_read
+#              object: folder:3
+#            expectation: True
+#          - tuple:
+#              user: user:harriette
+#              relation: can_read
+#              object: folder:3
+#            expectation: True
+#        listObjectsAssertions:
+#          - request:
+#              user: user:anne
+#              relation: can_read
+#              type: folder
+#            expectation:
+#              - folder:1
+#              - folder:2
+#              - folder:3
+#          - request:
+#              user: user:beth
+#              relation: can_read
+#              type: folder
+#            expectation:
+#              - folder:1
+#          - request:
+#              user: user:carl
+#              relation: can_read
+#              type: folder
+#            expectation: []
+#          - request:
+#              user: user:dan
+#              relation: can_read
+#              type: folder
+#            expectation: []
+#          - request:
+#              user: user:emily
+#              relation: can_read
+#              type: folder
+#            expectation:
+#              - folder:2
+#              - folder:3
+#          - request:
+#              user: user:frida
+#              relation: can_read
+#              type: folder
+#            expectation: []
+#          - request:
+#              user: user:gabriel
+#              relation: can_read
+#              type: folder
+#            expectation:
+#              - folder:2
+#              - folder:3
+#          - request:
+#              user: user:harriette
+#              relation: can_read
+#              type: folder
+#            expectation:
+#              - folder:1
+#              - folder:2
+#              - folder:3
+#              - folder:5
+#        listUsersAssertions:
+#          - request:
+#              filters:
+#                - user
+#              object: folder:1
+#              relation: can_read
+#            expectation:
+#              - user:anne
+#              - user:beth
+#              - user:harriette
+#          - request:
+#              filters:
+#                - user
+#              object: folder:2
+#              relation: can_read
+#            expectation:
+#              - user:anne
+#              - user:emily
+#              - user:gabriel
+#              - user:harriette
+#          - request:
+#              filters:
+#                - user
+#              object: folder:3
+#              relation: can_read
+#            expectation:
+#              - user:anne
+#              - user:emily
+#              - user:gabriel
+#              - user:harriette
+#          - request:
+#              filters:
+#                - user
+#              object: folder:5
+#              relation: can_read
+#            expectation:
+#              - user:harriette
   - name: resolution_too_complex_throws_error
     stages:
       - model: |

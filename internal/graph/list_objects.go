@@ -1,4 +1,4 @@
-package commands
+package graph
 
 import (
 	"context"
@@ -19,13 +19,11 @@ import (
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/condition"
-	"github.com/openfga/openfga/internal/graph"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/throttler"
 	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/server/commands/reverseexpand"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
@@ -60,7 +58,7 @@ type ListObjectsQuery struct {
 
 	dispatchThrottlerConfig threshold.Config
 
-	checkResolver graph.CheckResolver
+	checkResolver CheckResolver
 }
 
 type ListObjectsResolutionMetadata struct {
@@ -115,20 +113,20 @@ func WithResolveNodeLimit(limit uint32) ListObjectsQueryOption {
 }
 
 // WithResolveNodeBreadthLimit see server.WithResolveNodeBreadthLimit.
-func WithResolveNodeBreadthLimit(limit uint32) ListObjectsQueryOption {
+func WithLOResolveNodeBreadthLimit(limit uint32) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
 		d.resolveNodeBreadthLimit = limit
 	}
 }
 
-func WithLogger(l logger.Logger) ListObjectsQueryOption {
+func WithLOLogger(l logger.Logger) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
 		d.logger = l
 	}
 }
 
 // WithMaxConcurrentReads see server.WithMaxConcurrentReadsForListObjects.
-func WithMaxConcurrentReads(limit uint32) ListObjectsQueryOption {
+func WithLOMaxConcurrentReads(limit uint32) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
 		d.maxConcurrentReads = limit
 	}
@@ -136,7 +134,7 @@ func WithMaxConcurrentReads(limit uint32) ListObjectsQueryOption {
 
 func NewListObjectsQuery(
 	ds storage.RelationshipTupleReader,
-	checkResolver graph.CheckResolver,
+	checkResolver CheckResolver,
 	opts ...ListObjectsQueryOption,
 ) (*ListObjectsQuery, error) {
 	if ds == nil {
@@ -174,8 +172,10 @@ func NewListObjectsQuery(
 }
 
 type ListObjectsResult struct {
-	ObjectID string
-	Err      error
+	Relation      string
+	ObjectID      string
+	Err           error
+	FinalMetadata *ListObjectsResolutionMetadata
 }
 
 // listObjectsRequest captures the RPC request definition interface for the ListObjects API.
@@ -246,8 +246,8 @@ func (q *ListObjectsQuery) evaluate(
 		userObj, userRel := tuple.SplitObjectRelation(req.GetUser())
 		userObjType, userObjID := tuple.SplitObject(userObj)
 
-		var sourceUserRef reverseexpand.IsUserRef
-		sourceUserRef = &reverseexpand.UserRefObject{
+		var sourceUserRef IsUserRef
+		sourceUserRef = &UserRefObject{
 			Object: &openfgav1.Object{
 				Type: userObjType,
 				Id:   userObjID,
@@ -255,11 +255,11 @@ func (q *ListObjectsQuery) evaluate(
 		}
 
 		if tuple.IsTypedWildcard(userObj) {
-			sourceUserRef = &reverseexpand.UserRefTypedWildcard{Type: tuple.GetType(userObj)}
+			sourceUserRef = &UserRefTypedWildcard{Type: tuple.GetType(userObj)}
 		}
 
 		if userRel != "" {
-			sourceUserRef = &reverseexpand.UserRefObjectRelation{
+			sourceUserRef = &UserRefObjectRelation{
 				ObjectRelation: &openfgav1.ObjectRelation{
 					Object:   userObj,
 					Relation: userRel,
@@ -267,7 +267,7 @@ func (q *ListObjectsQuery) evaluate(
 			}
 		}
 
-		reverseExpandResultsChan := make(chan *reverseexpand.ReverseExpandResult, 1)
+		reverseExpandResultsChan := make(chan *ReverseExpandResult, 1)
 		objectsFound := atomic.Uint32{}
 
 		ds := storagewrappers.NewCombinedTupleReader(
@@ -275,13 +275,13 @@ func (q *ListObjectsQuery) evaluate(
 			req.GetContextualTuples().GetTupleKeys(),
 		)
 
-		reverseExpandQuery := reverseexpand.NewReverseExpandQuery(
+		reverseExpandQuery := NewReverseExpandQuery(
 			ds,
 			typesys,
-			reverseexpand.WithResolveNodeLimit(q.resolveNodeLimit),
-			reverseexpand.WithDispatchThrottlerConfig(q.dispatchThrottlerConfig),
-			reverseexpand.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
-			reverseexpand.WithLogger(q.logger),
+			WithREResolveNodeLimit(q.resolveNodeLimit),
+			WithREDispatchThrottlerConfig(q.dispatchThrottlerConfig),
+			WithREResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
+			WithRELogger(q.logger),
 		)
 
 		cancelCtx, cancel := context.WithCancel(ctx)
@@ -290,13 +290,13 @@ func (q *ListObjectsQuery) evaluate(
 
 		errChan := make(chan error, 1)
 
-		reverseExpandResolutionMetadata := reverseexpand.NewResolutionMetadata()
+		reverseExpandResolutionMetadata := NewResolutionMetadata()
 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 
-			err := reverseExpandQuery.Execute(cancelCtx, &reverseexpand.ReverseExpandRequest{
+			err := reverseExpandQuery.Execute(cancelCtx, &ReverseExpandRequest{
 				StoreID:          req.GetStoreId(),
 				ObjectType:       targetObjectType,
 				Relation:         targetRelation,
@@ -332,25 +332,25 @@ func (q *ListObjectsQuery) evaluate(
 					break ConsumerReadLoop
 				}
 
-				if res.ResultStatus == reverseexpand.NoFurtherEvalStatus {
+				if res.ResultStatus == NoFurtherEvalStatus {
 					noFurtherEvalRequiredCounter.Inc()
-					trySendObject(res.Object, &objectsFound, maxResults, resultsChan)
+					trySendObject(res.Object, req.GetRelation(), &objectsFound, maxResults, resultsChan)
 					continue
 				}
 
 				furtherEvalRequiredCounter.Inc()
 
 				wg.Add(1)
-				go func(res *reverseexpand.ReverseExpandResult) {
+				go func(res *ReverseExpandResult) {
 					defer func() {
 						<-concurrencyLimiterCh
 						wg.Done()
 					}()
 
 					concurrencyLimiterCh <- struct{}{}
-					checkRequestMetadata := graph.NewCheckRequestMetadata(q.resolveNodeLimit)
+					checkRequestMetadata := NewCheckRequestMetadata(q.resolveNodeLimit)
 
-					resp, err := q.checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
+					resp, err := q.checkResolver.ResolveCheck(ctx, &ResolveCheckRequest{
 						StoreID:              req.GetStoreId(),
 						AuthorizationModelID: req.GetAuthorizationModelId(),
 						TupleKey:             tuple.NewTupleKey(res.Object, req.GetRelation(), req.GetUser()),
@@ -360,7 +360,7 @@ func (q *ListObjectsQuery) evaluate(
 						Consistency:          req.GetConsistency(),
 					})
 					if err != nil {
-						if errors.Is(err, graph.ErrResolutionDepthExceeded) {
+						if errors.Is(err, ErrResolutionDepthExceeded) {
 							resultsChan <- ListObjectsResult{Err: serverErrors.AuthorizationModelResolutionTooComplex}
 							return
 						}
@@ -373,12 +373,12 @@ func (q *ListObjectsQuery) evaluate(
 					resolutionMetadata.WasThrottled.Store(reverseExpandResolutionMetadata.WasThrottled.Load())
 
 					if resp.Allowed {
-						trySendObject(res.Object, &objectsFound, maxResults, resultsChan)
+						trySendObject(res.Object, req.GetRelation(), &objectsFound, maxResults, resultsChan)
 					}
 				}(res)
 
 			case err := <-errChan:
-				if errors.Is(err, graph.ErrResolutionDepthExceeded) {
+				if errors.Is(err, ErrResolutionDepthExceeded) {
 					err = serverErrors.AuthorizationModelResolutionTooComplex
 				}
 
@@ -397,13 +397,13 @@ func (q *ListObjectsQuery) evaluate(
 	return nil
 }
 
-func trySendObject(object string, objectsFound *atomic.Uint32, maxResults uint32, resultsChan chan<- ListObjectsResult) {
+func trySendObject(object, relation string, objectsFound *atomic.Uint32, maxResults uint32, resultsChan chan<- ListObjectsResult) {
 	if !(maxResults == 0) {
 		if objectsFound.Add(1) > maxResults {
 			return
 		}
 	}
-	resultsChan <- ListObjectsResult{ObjectID: object}
+	resultsChan <- ListObjectsResult{ObjectID: object, Relation: relation}
 }
 
 // Execute the ListObjectsQuery, returning a list of object IDs up to a maximum of q.listObjectsMaxResults
@@ -470,7 +470,7 @@ func (q *ListObjectsQuery) Execute(
 // ExecuteStreamed executes the ListObjectsQuery, returning a stream of object IDs.
 // It ignores the value of q.listObjectsMaxResults and returns all available results
 // until q.listObjectsDeadline is hit.
-func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) (*ListObjectsResolutionMetadata, error) {
+func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.StreamedListObjectsRequest, extrChan chan ListObjectsResult, useExtraChan bool, srv openfgav1.OpenFGAService_StreamedListObjectsServer) (*ListObjectsResolutionMetadata, error) {
 	maxResults := uint32(math.MaxUint32)
 	// make a buffered channel so that writer goroutines aren't blocked when attempting to send a result
 	resultsChan := make(chan ListObjectsResult, streamedBufferSize)
@@ -483,6 +483,11 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 	}
 
 	resolutionMetadata := NewListObjectsResolutionMetadata()
+	defer func() {
+		if useExtraChan {
+			extrChan <- ListObjectsResult{FinalMetadata: resolutionMetadata}
+		}
+	}()
 
 	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata)
 	if err != nil {
@@ -502,10 +507,14 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			return nil, serverErrors.HandleError("", result.Err)
 		}
 
-		if err := srv.Send(&openfgav1.StreamedListObjectsResponse{
-			Object: result.ObjectID,
-		}); err != nil {
-			return nil, serverErrors.HandleError("", err)
+		if useExtraChan {
+			extrChan <- result
+		} else {
+			if err := srv.Send(&openfgav1.StreamedListObjectsResponse{
+				Object: result.ObjectID,
+			}); err != nil {
+				return nil, serverErrors.HandleError("", err)
+			}
 		}
 	}
 

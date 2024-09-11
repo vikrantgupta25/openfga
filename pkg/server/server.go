@@ -698,21 +698,21 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		return nil, err
 	}
 
-	q, err := commands.NewListObjectsQuery(
+	q, err := graph.NewListObjectsQuery(
 		s.datastore,
 		s.checkResolver,
-		commands.WithLogger(s.logger),
-		commands.WithListObjectsDeadline(s.listObjectsDeadline),
-		commands.WithListObjectsMaxResults(s.listObjectsMaxResults),
-		commands.WithDispatchThrottlerConfig(threshold.Config{
+		graph.WithLOLogger(s.logger),
+		graph.WithListObjectsDeadline(s.listObjectsDeadline),
+		graph.WithListObjectsMaxResults(s.listObjectsMaxResults),
+		graph.WithDispatchThrottlerConfig(threshold.Config{
 			Throttler:    s.listObjectsDispatchThrottler,
 			Enabled:      s.listObjectsDispatchThrottlingEnabled,
 			Threshold:    s.listObjectsDispatchDefaultThreshold,
 			MaxThreshold: s.listObjectsDispatchThrottlingMaxThreshold,
 		}),
-		commands.WithResolveNodeLimit(s.resolveNodeLimit),
-		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
+		graph.WithResolveNodeLimit(s.resolveNodeLimit),
+		graph.WithLOResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+		graph.WithLOMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
 	)
 	if err != nil {
 		return nil, serverErrors.NewInternalError("", err)
@@ -807,21 +807,21 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		return err
 	}
 
-	q, err := commands.NewListObjectsQuery(
+	q, err := graph.NewListObjectsQuery(
 		s.datastore,
 		s.checkResolver,
-		commands.WithLogger(s.logger),
-		commands.WithListObjectsDeadline(s.listObjectsDeadline),
-		commands.WithDispatchThrottlerConfig(threshold.Config{
+		graph.WithLOLogger(s.logger),
+		graph.WithListObjectsDeadline(s.listObjectsDeadline),
+		graph.WithListObjectsMaxResults(s.listObjectsMaxResults),
+		graph.WithDispatchThrottlerConfig(threshold.Config{
 			Throttler:    s.listObjectsDispatchThrottler,
 			Enabled:      s.listObjectsDispatchThrottlingEnabled,
 			Threshold:    s.listObjectsDispatchDefaultThreshold,
 			MaxThreshold: s.listObjectsDispatchThrottlingMaxThreshold,
 		}),
-		commands.WithListObjectsMaxResults(s.listObjectsMaxResults),
-		commands.WithResolveNodeLimit(s.resolveNodeLimit),
-		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
+		graph.WithResolveNodeLimit(s.resolveNodeLimit),
+		graph.WithLOResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+		graph.WithLOMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
 	)
 	if err != nil {
 		return serverErrors.NewInternalError("", err)
@@ -832,6 +832,8 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 	resolutionMetadata, err := q.ExecuteStreamed(
 		typesystem.ContextWithTypesystem(ctx, typesys),
 		req,
+		nil,
+		false,
 		srv,
 	)
 	if err != nil {

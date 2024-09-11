@@ -1,5 +1,4 @@
-// Package reverseexpand contains the code that handles the ReverseExpand API
-package reverseexpand
+package graph
 
 import (
 	"context"
@@ -9,7 +8,6 @@ import (
 	"sync/atomic"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -18,7 +16,6 @@ import (
 
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
-	"github.com/openfga/openfga/internal/graph"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/throttler"
 	"github.com/openfga/openfga/internal/throttler/threshold"
@@ -31,8 +28,6 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-var tracer = otel.Tracer("openfga/pkg/server/commands/reverse_expand")
-
 type ReverseExpandRequest struct {
 	StoreID          string
 	ObjectType       string
@@ -42,7 +37,7 @@ type ReverseExpandRequest struct {
 	Context          *structpb.Struct
 	Consistency      openfgav1.ConsistencyPreference
 
-	edge *graph.RelationshipEdge
+	edge *RelationshipEdge
 }
 
 type IsUserRef interface {
@@ -127,19 +122,19 @@ type ReverseExpandQuery struct {
 
 type ReverseExpandQueryOption func(d *ReverseExpandQuery)
 
-func WithResolveNodeLimit(limit uint32) ReverseExpandQueryOption {
+func WithREResolveNodeLimit(limit uint32) ReverseExpandQueryOption {
 	return func(d *ReverseExpandQuery) {
 		d.resolveNodeLimit = limit
 	}
 }
 
-func WithDispatchThrottlerConfig(config threshold.Config) ReverseExpandQueryOption {
+func WithREDispatchThrottlerConfig(config threshold.Config) ReverseExpandQueryOption {
 	return func(d *ReverseExpandQuery) {
 		d.dispatchThrottlerConfig = config
 	}
 }
 
-func WithResolveNodeBreadthLimit(limit uint32) ReverseExpandQueryOption {
+func WithREResolveNodeBreadthLimit(limit uint32) ReverseExpandQueryOption {
 	return func(d *ReverseExpandQuery) {
 		d.resolveNodeBreadthLimit = limit
 	}
@@ -199,7 +194,7 @@ func NewResolutionMetadata() *ResolutionMetadata {
 	}
 }
 
-func WithLogger(logger logger.Logger) ReverseExpandQueryOption {
+func WithRELogger(logger logger.Logger) ReverseExpandQueryOption {
 	return func(d *ReverseExpandQuery) {
 		d.logger = logger
 	}
@@ -268,15 +263,15 @@ func (c *ReverseExpandQuery) execute(
 		span.SetAttributes(attribute.String("edge", req.edge.String()))
 	}
 
-	depth, ok := graph.ResolutionDepthFromContext(ctx)
+	depth, ok := ResolutionDepthFromContext(ctx)
 	if !ok {
-		ctx = graph.ContextWithResolutionDepth(ctx, 0)
+		ctx = ContextWithResolutionDepth(ctx, 0)
 	} else {
 		if depth >= c.resolveNodeLimit {
-			return graph.ErrResolutionDepthExceeded
+			return ErrResolutionDepthExceeded
 		}
 
-		ctx = graph.ContextWithResolutionDepth(ctx, depth+1)
+		ctx = ContextWithResolutionDepth(ctx, depth+1)
 	}
 
 	var sourceUserRef *openfgav1.RelationReference
@@ -321,7 +316,7 @@ func (c *ReverseExpandQuery) execute(
 
 	targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
 
-	g := graph.New(c.typesystem)
+	g := New(c.typesystem)
 
 	edges, err := g.GetPrunedRelationshipEdges(targetObjRef, sourceUserRef)
 	if err != nil {
@@ -346,11 +341,11 @@ LoopOnEdges:
 			edge:             innerLoopEdge,
 		}
 		switch innerLoopEdge.Type {
-		case graph.DirectEdge:
+		case DirectEdge:
 			pool.Go(func(ctx context.Context) error {
 				return c.reverseExpandDirect(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			})
-		case graph.ComputedUsersetEdge:
+		case ComputedUsersetEdge:
 			// follow the computed_userset edge, no new goroutine needed since it's not I/O intensive
 			r.User = &UserRefObjectRelation{
 				ObjectRelation: &openfgav1.ObjectRelation{
@@ -363,7 +358,7 @@ LoopOnEdges:
 				errs = errors.Join(errs, err)
 				break LoopOnEdges
 			}
-		case graph.TupleToUsersetEdge:
+		case TupleToUsersetEdge:
 			pool.Go(func(ctx context.Context) error {
 				return c.reverseExpandTupleToUserset(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			})
@@ -445,7 +440,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 	var relationFilter string
 
 	switch req.edge.Type {
-	case graph.DirectEdge:
+	case DirectEdge:
 		relationFilter = req.edge.TargetReference.GetRelation()
 		targetUserObjectType := req.User.GetObjectType()
 
@@ -472,7 +467,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 		if val, ok := req.User.(*UserRefObjectRelation); ok {
 			userFilter = append(userFilter, val.ObjectRelation)
 		}
-	case graph.TupleToUsersetEdge:
+	case TupleToUsersetEdge:
 		relationFilter = req.edge.TuplesetRelation
 		// a TTU edge can only have a userset as a source node
 		// e.g. 'group:eng#member'
@@ -549,9 +544,9 @@ LoopOnIterator:
 		var newRelation string
 
 		switch req.edge.Type {
-		case graph.DirectEdge:
+		case DirectEdge:
 			newRelation = tk.GetRelation()
-		case graph.TupleToUsersetEdge:
+		case TupleToUsersetEdge:
 			newRelation = req.edge.TargetReference.GetRelation()
 		default:
 			panic("unsupported edge type")

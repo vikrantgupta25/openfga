@@ -1,4 +1,4 @@
-package commands
+package graph
 
 import (
 	"context"
@@ -8,9 +8,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	openfgaErrors "github.com/openfga/openfga/internal/errors"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/pkg/storage"
@@ -21,7 +22,7 @@ import (
 
 func TestNewListObjectsQuery(t *testing.T) {
 	t.Run("nil_datastore", func(t *testing.T) {
-		checkResolver, checkResolverCloser := graph.NewOrderedCheckResolvers().Build()
+		checkResolver, checkResolverCloser := NewOrderedCheckResolvers().Build()
 		t.Cleanup(checkResolverCloser)
 		q, err := NewListObjectsQuery(nil, checkResolver)
 		require.Nil(t, q)
@@ -35,12 +36,12 @@ func TestNewListObjectsQuery(t *testing.T) {
 	})
 
 	t.Run("empty_typesystem_in_context", func(t *testing.T) {
-		checkResolver := graph.NewLocalChecker()
+		checkResolver := NewLocalChecker()
 		q, err := NewListObjectsQuery(memory.New(), checkResolver)
 		require.NoError(t, err)
 
 		_, err = q.Execute(context.Background(), &openfgav1.ListObjectsRequest{})
-		require.ErrorContains(t, err, "typesystem missing in context")
+		require.ErrorIs(t, err, openfgaErrors.ErrUnknown)
 	})
 }
 
@@ -207,8 +208,8 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			require.NoError(t, err)
 			ctx = typesystem.ContextWithTypesystem(ctx, ts)
 
-			checker, checkResolverCloser := graph.NewOrderedCheckResolvers(
-				graph.WithLocalCheckerOpts(graph.WithMaxConcurrentReads(1))).Build()
+			checker, checkResolverCloser := NewOrderedCheckResolvers(
+				WithLocalCheckerOpts(WithMaxConcurrentReads(1))).Build()
 			t.Cleanup(checkResolverCloser)
 
 			q, _ := NewListObjectsQuery(
@@ -266,11 +267,11 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	checkCache := storage.NewInMemoryLRUCache[*graph.ResolveCheckResponse]()
+	checkCache := storage.NewInMemoryLRUCache[*ResolveCheckResponse]()
 	defer checkCache.Stop()
 
 	// Write an item to the cache that has an Allowed value of false for folder:A
-	req := &graph.ResolveCheckRequest{
+	req := &ResolveCheckRequest{
 		StoreID: storeID,
 		TupleKey: &openfgav1.TupleKey{
 			User:     "user:jon",
@@ -278,19 +279,19 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 			Object:   "folder:A",
 		},
 	}
-	cacheKey, err := graph.CheckRequestCacheKey(req)
+	cacheKey, err := CheckRequestCacheKey(req)
 	require.NoError(t, err)
 
-	checkCache.Set(cacheKey, &graph.ResolveCheckResponse{
+	checkCache.Set(cacheKey, &ResolveCheckResponse{
 		Allowed: false,
 	}, 10*time.Second)
 
 	require.NoError(t, err)
 	ctx = typesystem.ContextWithTypesystem(ctx, ts)
 
-	checkResolver, checkResolverCloser := graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
-		graph.WithCachedCheckResolverOpts(true, []graph.CachedCheckResolverOpt{
-			graph.WithExistingCache(checkCache),
+	checkResolver, checkResolverCloser := NewOrderedCheckResolvers([]CheckResolverOrderedBuilderOpt{
+		WithCachedCheckResolverOpts(true, []CachedCheckResolverOpt{
+			WithExistingCache(checkCache),
 		}...),
 	}...).Build()
 	t.Cleanup(checkResolverCloser)
@@ -337,7 +338,7 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 	require.Len(t, resp.Objects, 3)
 
 	// Now set the third item as `allowed: false` in the cache and run with `UNSPECIFIED`, it should use the cache and only return two item
-	checkCache.Set(cacheKey, &graph.ResolveCheckResponse{
+	checkCache.Set(cacheKey, &ResolveCheckResponse{
 		Allowed: false,
 	}, 10*time.Second)
 

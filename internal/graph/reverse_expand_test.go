@@ -1,4 +1,4 @@
-package reverseexpand
+package graph
 
 import (
 	"context"
@@ -489,7 +489,7 @@ func TestReverseExpandThrottle(t *testing.T) {
 		reverseExpandQuery := NewReverseExpandQuery(
 			mockDatastore,
 			typesys,
-			WithDispatchThrottlerConfig(threshold.Config{
+			WithREDispatchThrottlerConfig(threshold.Config{
 				Throttler:    mockThrottler,
 				Threshold:    200,
 				MaxThreshold: 200,
@@ -509,7 +509,7 @@ func TestReverseExpandThrottle(t *testing.T) {
 		reverseExpandQuery := NewReverseExpandQuery(
 			mockDatastore,
 			typesys,
-			WithDispatchThrottlerConfig(threshold.Config{
+			WithREDispatchThrottlerConfig(threshold.Config{
 				Throttler:    mockThrottler,
 				Threshold:    200,
 				MaxThreshold: 200,
@@ -529,7 +529,7 @@ func TestReverseExpandThrottle(t *testing.T) {
 		reverseExpandQuery := NewReverseExpandQuery(
 			mockDatastore,
 			typesys,
-			WithDispatchThrottlerConfig(threshold.Config{
+			WithREDispatchThrottlerConfig(threshold.Config{
 				Throttler:    mockThrottler,
 				Threshold:    200,
 				MaxThreshold: 0,
@@ -549,7 +549,7 @@ func TestReverseExpandThrottle(t *testing.T) {
 		reverseExpandQuery := NewReverseExpandQuery(
 			mockDatastore,
 			typesys,
-			WithDispatchThrottlerConfig(threshold.Config{
+			WithREDispatchThrottlerConfig(threshold.Config{
 				Throttler:    mockThrottler,
 				Threshold:    0,
 				MaxThreshold: 210,
@@ -571,7 +571,7 @@ func TestReverseExpandThrottle(t *testing.T) {
 		reverseExpandQuery := NewReverseExpandQuery(
 			mockDatastore,
 			typesys,
-			WithDispatchThrottlerConfig(threshold.Config{
+			WithREDispatchThrottlerConfig(threshold.Config{
 				Throttler:    mockThrottler,
 				Threshold:    200,
 				MaxThreshold: 300,
@@ -703,7 +703,7 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 				q := NewReverseExpandQuery(
 					ds,
 					typesys,
-					WithDispatchThrottlerConfig(threshold.Config{
+					WithREDispatchThrottlerConfig(threshold.Config{
 						Throttler:    mockThrottler,
 						Enabled:      test.throttlingEnabled,
 						Threshold:    3,

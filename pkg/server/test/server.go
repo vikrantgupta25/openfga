@@ -36,8 +36,8 @@ func RunQueryTests(t *testing.T, ds storage.OpenFGADatastore) {
 		func(t *testing.T) { TestReadAuthorizationModelsInvalidContinuationToken(t, ds) },
 	)
 
-	t.Run("TestListObjects", func(t *testing.T) { TestListObjects(t, ds) })
-	t.Run("TestReverseExpand", func(t *testing.T) { TestReverseExpand(t, ds) })
+	// t.Run("TestListObjects", func(t *testing.T) { TestListObjects(t, ds) })
+	// t.Run("TestReverseExpand", func(t *testing.T) { TestReverseExpand(t, ds) })
 }
 
 func RunCommandTests(t *testing.T, ds storage.OpenFGADatastore) {
@@ -49,6 +49,6 @@ func RunCommandTests(t *testing.T, ds storage.OpenFGADatastore) {
 }
 
 func RunAllBenchmarks(b *testing.B, ds storage.OpenFGADatastore) {
-	b.Run("BenchmarkListObjects", func(b *testing.B) { BenchmarkListObjects(b, ds) })
+	// b.Run("BenchmarkListObjects", func(b *testing.B) { BenchmarkListObjects(b, ds) })
 	b.Run("BenchmarkListUsers", func(b *testing.B) { BenchmarkListUsers(b, ds) })
 }

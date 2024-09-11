@@ -38,6 +38,7 @@ func BuildTupleKeyConditionFilter(ctx context.Context, reqCtx *structpb.Struct, 
 }
 
 // ObjectIDInSortedSet returns whether any of the object IDs in the tuples given by the iterator is in the input set of objectIDs.
+// TODO unused.
 func ObjectIDInSortedSet(ctx context.Context, filteredIter *storage.ConditionsFilteredTupleKeyIterator, objectIDs storage.SortedSet) (bool, error) {
 	for {
 		t, err := filteredIter.Next(ctx)
@@ -81,6 +82,7 @@ type resolveCheckRequest interface {
 // IteratorReadStartingFromUser returns storage iterator for
 // user with request's type and relation with specified objectIDs as
 // filter.
+// TODO unused.
 func IteratorReadStartingFromUser(ctx context.Context,
 	typesys *typesystem.TypeSystem,
 	ds storage.RelationshipTupleReader,
