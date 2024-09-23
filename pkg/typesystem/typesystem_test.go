@@ -4552,6 +4552,23 @@ condition cond(x: int) {
 			expected:           true,
 		},
 		{
+			name: "simple_recursive_userset_cond",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user, group#member, group#member with cond]
+condition cond(x: int) {
+	x < 100
+}
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           true,
+		},
+		{
 			name: "simple_recursive_multi_direct_assignment_user_wildcard_cond",
 			model: `
 model
