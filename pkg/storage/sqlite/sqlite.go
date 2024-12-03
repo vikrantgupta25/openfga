@@ -345,7 +345,7 @@ func (s *Datastore) write(
 		}
 
 		err = busyRetry(func() error {
-			_, err = insertBuilder.
+			query := insertBuilder.
 				Values(
 					store,
 					objectType,
@@ -359,7 +359,13 @@ func (s *Datastore) write(
 					conditionContext,
 					id,
 					sq.Expr("datetime('subsec')"),
-				).
+				)
+			if allowUpsert {
+				if allowUpsert {
+					query = query.Suffix("on conflict(store, object_type, object_id, relation, user_object_type, user_object_id, user_relation) do update set condition_name = ?, condition_context = ?, inserted_at = datetime('subsec')", conditionName, conditionContext)
+				}
+			}
+			_, err = query.
 				RunWith(txn). // Part of a txn.
 				ExecContext(ctx)
 			return err

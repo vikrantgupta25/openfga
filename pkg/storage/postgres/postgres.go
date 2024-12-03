@@ -234,7 +234,12 @@ func (s *Datastore) Write(
 	ctx, span := startTrace(ctx, "Write")
 	defer span.End()
 
-	return sqlcommon.Write(ctx, s.dbInfo, store, deletes, writes, allowUpsert, time.Now().UTC())
+	upsertHandler := ""
+	if allowUpsert {
+		// FIXME: verify whether user_type needs to be a primary key
+		upsertHandler = "on conflict (store, object_type, object_id, relation, _user) do update set condition_name = ?, condition_context = ?, inserted_at = now()"
+	}
+	return sqlcommon.Write(ctx, s.dbInfo, store, deletes, writes, upsertHandler, time.Now().UTC())
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.

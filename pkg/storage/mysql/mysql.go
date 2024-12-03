@@ -220,7 +220,11 @@ func (s *Datastore) Write(
 	ctx, span := startTrace(ctx, "Write")
 	defer span.End()
 
-	return sqlcommon.Write(ctx, s.dbInfo, store, deletes, writes, allowUpsert, time.Now().UTC())
+	upsertHandler := ""
+	if allowUpsert {
+		upsertHandler = "on duplicate key update condition_name = ?, condition_context = ?, inserted_at = now()"
+	}
+	return sqlcommon.Write(ctx, s.dbInfo, store, deletes, writes, upsertHandler, time.Now().UTC())
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.

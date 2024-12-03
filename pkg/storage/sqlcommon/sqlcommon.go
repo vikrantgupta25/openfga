@@ -415,7 +415,7 @@ func Write(
 	store string,
 	deletes storage.Deletes,
 	writes storage.Writes,
-	allowUpsert bool,
+	upsertHandle string,
 	now time.Time,
 ) error {
 	txn, err := dbInfo.db.BeginTx(ctx, nil)
@@ -491,7 +491,7 @@ func Write(
 			return err
 		}
 
-		_, err = insertBuilder.
+		query := insertBuilder.
 			Values(
 				store,
 				objectType,
@@ -503,7 +503,13 @@ func Write(
 				conditionContext,
 				id,
 				sq.Expr("NOW()"),
-			).
+			)
+
+		if upsertHandle != "" {
+			query = query.Suffix(upsertHandle, conditionName, conditionContext)
+		}
+
+		_, err = query.
 			RunWith(txn). // Part of a txn.
 			ExecContext(ctx)
 		if err != nil {

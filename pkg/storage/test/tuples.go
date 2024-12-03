@@ -774,6 +774,24 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.EqualError(t, err, expectedError.Error())
 	})
 
+	t.Run("inserting_a_tuple_twice_succeed_with_upsert", func(t *testing.T) {
+		storeID := ulid.Make().String()
+		tk := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
+
+		// First write should succeed.
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk}, true)
+		require.NoError(t, err)
+
+		// Second write of the same tuple should fail.
+		err = datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk}, true)
+		require.NoError(t, err)
+
+		// Make sure the tuple is still ok
+		data, err := datastore.ReadUserTuple(ctx, storeID, tk, storage.ReadUserTupleOptions{})
+		require.NoError(t, err)
+		require.Equal(t, tk, data.GetKey())
+	})
+
 	t.Run("inserting_a_tuple_twice_either_conditioned_or_not_fails", func(t *testing.T) {
 		storeID := ulid.Make().String()
 		tk := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
@@ -795,6 +813,41 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 			},
 		}, false)
 		require.EqualError(t, err, expectedError.Error())
+	})
+
+	t.Run("upsert_with_different_condition", func(t *testing.T) {
+		storeID := ulid.Make().String()
+		tk := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
+
+		// First write should succeed.
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk}, true)
+		require.NoError(t, err)
+
+		data, err := datastore.ReadUserTuple(ctx, storeID, tk, storage.ReadUserTupleOptions{})
+		require.NoError(t, err)
+		require.Equal(t, tk, data.GetKey())
+
+		// Second write of the same tuple but conditioned should still fail.
+		tk2 := &openfgav1.TupleKey{
+			Object:   tk.GetObject(),
+			Relation: tk.GetRelation(),
+			User:     tk.GetUser(),
+			Condition: &openfgav1.RelationshipCondition{
+				Name:    "condition",
+				Context: &structpb.Struct{},
+			},
+		}
+		err = datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			tk2,
+		}, true)
+		require.NoError(t, err)
+
+		data, err = datastore.ReadUserTuple(ctx, storeID, tk, storage.ReadUserTupleOptions{})
+		require.NoError(t, err)
+
+		if diff := cmp.Diff(tk2, data.GetKey(), cmpOpts...); diff != "" {
+			require.FailNowf(t, "mismatch (-want +got):\n%s", diff)
+		}
 	})
 
 	t.Run("inserting_conditioned_tuple_and_deleting_tuple_succeeds", func(t *testing.T) {

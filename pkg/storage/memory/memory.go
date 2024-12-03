@@ -372,12 +372,6 @@ Delete:
 
 Write:
 	for _, t := range writes {
-		for _, et := range records {
-			if match(et, t) && !allowUpsert {
-				continue Write
-			}
-		}
-
 		var conditionName string
 		var conditionContext *structpb.Struct
 		if condition := t.GetCondition(); condition != nil {
@@ -386,18 +380,33 @@ Write:
 		}
 
 		objectType, objectID := tupleUtils.SplitObject(t.GetObject())
+		isUpserting := false
 
-		records = append(records, &storage.TupleRecord{
-			Store:            store,
-			ObjectType:       objectType,
-			ObjectID:         objectID,
-			Relation:         t.GetRelation(),
-			User:             t.GetUser(),
-			ConditionName:    conditionName,
-			ConditionContext: conditionContext,
-			Ulid:             ulid.MustNew(ulid.Timestamp(now.AsTime()), ulid.DefaultEntropy()).String(),
-			InsertedAt:       now.AsTime(),
-		})
+		for recordID, et := range records {
+			if match(et, t) {
+				if !allowUpsert {
+					continue Write
+				}
+				isUpserting = true
+				records[recordID].ConditionName = conditionName
+				records[recordID].ConditionContext = conditionContext
+				records[recordID].InsertedAt = now.AsTime()
+			}
+		}
+
+		if !isUpserting {
+			records = append(records, &storage.TupleRecord{
+				Store:            store,
+				ObjectType:       objectType,
+				ObjectID:         objectID,
+				Relation:         t.GetRelation(),
+				User:             t.GetUser(),
+				ConditionName:    conditionName,
+				ConditionContext: conditionContext,
+				Ulid:             ulid.MustNew(ulid.Timestamp(now.AsTime()), ulid.DefaultEntropy()).String(),
+				InsertedAt:       now.AsTime(),
+			})
+		}
 
 		tk := tupleUtils.NewTupleKeyWithCondition(
 			tupleUtils.BuildObject(objectType, objectID),
