@@ -2949,7 +2949,7 @@ func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 			require.NoError(t, err)
 
 			if len(test.tuples) > 0 {
-				err = ds.Write(context.Background(), storeID, nil, test.tuples)
+				err = ds.Write(context.Background(), storeID, nil, test.tuples, false)
 				require.NoError(t, err)
 			}
 
@@ -3103,7 +3103,7 @@ func TestListUsersDatastoreQueryCountAndDispatchCount(t *testing.T) {
 		tuple.NewTupleKey("document:x", "multiple_userset", "org:fga#member"),
 		tuple.NewTupleKey("document:x", "multiple_userset", "company:fga#member"),
 		tuple.NewTupleKey("document:public", "wildcard", "user:*"),
-	})
+	}, false)
 	require.NoError(t, err)
 
 	model := parser.MustTransformDSLToProto(`
@@ -3477,7 +3477,7 @@ func TestListUsersConfig_MaxResults(t *testing.T) {
 			require.NoError(t, err)
 
 			// arrange: write tuples
-			err = ds.Write(context.Background(), storeID, nil, test.inputTuples)
+			err = ds.Write(context.Background(), storeID, nil, test.inputTuples, false)
 			require.NoError(t, err)
 
 			typesys, err := typesystem.NewAndValidate(context.Background(), model)
@@ -3602,7 +3602,7 @@ func TestListUsersConfig_Deadline(t *testing.T) {
 			require.NoError(t, err)
 
 			// arrange: write tuples
-			err = ds.Write(context.Background(), storeID, nil, test.inputTuples)
+			err = ds.Write(context.Background(), storeID, nil, test.inputTuples, false)
 			require.NoError(t, err)
 
 			typesys, err := typesystem.NewAndValidate(context.Background(), model)
@@ -3712,7 +3712,7 @@ func TestListUsersConfig_MaxConcurrency(t *testing.T) {
 			require.NoError(t, err)
 
 			// arrange: write tuples
-			err = ds.Write(context.Background(), storeID, nil, test.inputTuples)
+			err = ds.Write(context.Background(), storeID, nil, test.inputTuples, false)
 			require.NoError(t, err)
 
 			typesys, err := typesystem.NewAndValidate(context.Background(), model)

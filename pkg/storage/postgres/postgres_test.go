@@ -80,6 +80,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{firstTuple},
+				false,
 				time.Now())
 			require.NoError(t, err)
 
@@ -89,6 +90,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{secondTuple},
+				false,
 				time.Now().Add(time.Minute*-1))
 			require.NoError(t, err)
 
@@ -97,6 +99,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{thirdTuple},
+				false,
 				time.Now().Add(time.Minute*-2))
 			require.NoError(t, err)
 
@@ -181,6 +184,7 @@ func TestCtxCancel(t *testing.T) {
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{firstTuple},
+				false,
 				time.Now())
 			require.NoError(t, err)
 
@@ -190,6 +194,7 @@ func TestCtxCancel(t *testing.T) {
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{secondTuple},
+				false,
 				time.Now().Add(time.Minute*-1))
 			require.NoError(t, err)
 
@@ -198,6 +203,7 @@ func TestCtxCancel(t *testing.T) {
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{thirdTuple},
+				false,
 				time.Now().Add(time.Minute*-2))
 			require.NoError(t, err)
 
@@ -240,6 +246,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 		store,
 		[]*openfgav1.TupleKeyWithoutCondition{},
 		[]*openfgav1.TupleKey{firstTuple},
+		false,
 		time.Now())
 	require.NoError(t, err)
 
@@ -249,6 +256,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 		store,
 		[]*openfgav1.TupleKeyWithoutCondition{},
 		[]*openfgav1.TupleKey{secondTuple},
+		false,
 		time.Now().Add(time.Minute*-1))
 	require.NoError(t, err)
 

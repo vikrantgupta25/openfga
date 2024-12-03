@@ -213,11 +213,12 @@ func (s *Datastore) Write(
 	store string,
 	deletes storage.Deletes,
 	writes storage.Writes,
+	allowUpsert bool,
 ) error {
 	ctx, span := startTrace(ctx, "Write")
 	defer span.End()
 
-	return s.write(ctx, store, deletes, writes, time.Now().UTC())
+	return s.write(ctx, store, deletes, writes, allowUpsert, time.Now().UTC())
 }
 
 // Write provides the common method for writing to database across sql storage.
@@ -226,6 +227,7 @@ func (s *Datastore) write(
 	store string,
 	deletes storage.Deletes,
 	writes storage.Writes,
+	allowUpsert bool,
 	now time.Time,
 ) error {
 	var txn *sql.Tx

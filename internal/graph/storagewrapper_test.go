@@ -371,8 +371,8 @@ func TestReadUsersetTuples(t *testing.T) {
 	}
 
 	mockDatastore.EXPECT().
-		Write(gomock.Any(), storeID, nil, tks).Return(nil)
-	err := ds.Write(ctx, storeID, nil, tks)
+		Write(gomock.Any(), storeID, nil, tks, false).Return(nil)
+	err := ds.Write(ctx, storeID, nil, tks, false)
 	require.NoError(t, err)
 
 	t.Run("cache_miss", func(t *testing.T) {
@@ -565,9 +565,9 @@ func TestRead(t *testing.T) {
 	tk := tuple.NewTupleKey("license:1", "owner", "")
 
 	mockDatastore.EXPECT().
-		Write(gomock.Any(), storeID, nil, tks).Return(nil)
+		Write(gomock.Any(), storeID, nil, tks, false).Return(nil)
 
-	err := ds.Write(ctx, storeID, nil, tks)
+	err := ds.Write(ctx, storeID, nil, tks, false)
 	require.NoError(t, err)
 
 	cmpOpts := []cmp.Option{

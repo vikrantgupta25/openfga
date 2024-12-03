@@ -28,7 +28,7 @@ func TestBoundedConcurrencyWrapper(t *testing.T) {
 
 	err := slowBackend.Write(context.Background(), store, []*openfgav1.TupleKeyWithoutCondition{}, []*openfgav1.TupleKey{
 		tuple.NewTupleKey("obj:1", "viewer", "user:anne"),
-	})
+	}, false)
 	require.NoError(t, err)
 
 	// Create a limited tuple reader that allows 1 concurrent read a time.

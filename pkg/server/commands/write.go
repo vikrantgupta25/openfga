@@ -66,6 +66,7 @@ func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest)
 		req.GetStoreId(),
 		req.GetDeletes().GetTupleKeys(),
 		req.GetWrites().GetTupleKeys(),
+		req.GetUpsertAllowed() == openfgav1.UpsertPreference_ALLOW_UPSERT,
 	)
 	if err != nil {
 		if errors.Is(err, storage.ErrTransactionalWriteFailed) {

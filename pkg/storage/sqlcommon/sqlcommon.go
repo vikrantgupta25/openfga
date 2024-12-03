@@ -415,6 +415,7 @@ func Write(
 	store string,
 	deletes storage.Deletes,
 	writes storage.Writes,
+	allowUpsert bool,
 	now time.Time,
 ) error {
 	txn, err := dbInfo.db.BeginTx(ctx, nil)

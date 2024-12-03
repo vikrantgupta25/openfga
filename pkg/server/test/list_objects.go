@@ -482,7 +482,7 @@ func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 			require.NoError(t, err)
 
 			// arrange: write tuples
-			err = ds.Write(context.Background(), storeID, nil, test.tuples)
+			err = ds.Write(context.Background(), storeID, nil, test.tuples, false)
 			require.NoError(t, err)
 
 			// act: run ListObjects
@@ -629,7 +629,7 @@ func setupListObjectsBenchmark(b *testing.B, ds storage.OpenFGADatastore, storeI
 			numberObjectsAccesible++
 		}
 
-		err := ds.Write(context.Background(), storeID, nil, tuples)
+		err := ds.Write(context.Background(), storeID, nil, tuples, false)
 		require.NoError(b, err)
 	}
 

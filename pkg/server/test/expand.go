@@ -799,6 +799,7 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				test.tuples,
+				false,
 			)
 			require.NoError(t, err)
 
@@ -965,6 +966,7 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				test.tuples,
+				false,
 			)
 			require.NoError(t, err)
 

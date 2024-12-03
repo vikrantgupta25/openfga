@@ -332,7 +332,7 @@ type tupleChangeRec struct {
 }
 
 // Write see [storage.RelationshipTupleWriter].Write.
-func (s *MemoryBackend) Write(ctx context.Context, store string, deletes storage.Deletes, writes storage.Writes) error {
+func (s *MemoryBackend) Write(ctx context.Context, store string, deletes storage.Deletes, writes storage.Writes, allowUpsert bool) error {
 	_, span := tracer.Start(ctx, "memory.Write")
 	defer span.End()
 
@@ -341,7 +341,7 @@ func (s *MemoryBackend) Write(ctx context.Context, store string, deletes storage
 
 	now := timestamppb.Now()
 
-	if err := validateTuples(s.tuples[store], deletes, writes); err != nil {
+	if err := validateTuples(s.tuples[store], deletes, writes, allowUpsert); err != nil {
 		return err
 	}
 
@@ -373,7 +373,7 @@ Delete:
 Write:
 	for _, t := range writes {
 		for _, et := range records {
-			if match(et, t) {
+			if match(et, t) && !allowUpsert {
 				continue Write
 			}
 		}
@@ -424,6 +424,7 @@ func validateTuples(
 	records []*storage.TupleRecord,
 	deletes []*openfgav1.TupleKeyWithoutCondition,
 	writes []*openfgav1.TupleKey,
+	allowUpsert bool,
 ) error {
 	for _, tk := range deletes {
 		if !find(records, tupleUtils.TupleKeyWithoutConditionToTupleKey(tk)) {
@@ -431,7 +432,7 @@ func validateTuples(
 		}
 	}
 	for _, tk := range writes {
-		if find(records, tk) {
+		if find(records, tk) && !allowUpsert {
 			return storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_WRITE)
 		}
 	}

@@ -215,11 +215,12 @@ func (s *Datastore) Write(
 	store string,
 	deletes storage.Deletes,
 	writes storage.Writes,
+	allowUpsert bool,
 ) error {
 	ctx, span := startTrace(ctx, "Write")
 	defer span.End()
 
-	return sqlcommon.Write(ctx, s.dbInfo, store, deletes, writes, time.Now().UTC())
+	return sqlcommon.Write(ctx, s.dbInfo, store, deletes, writes, allowUpsert, time.Now().UTC())
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.

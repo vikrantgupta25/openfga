@@ -771,7 +771,7 @@ func TestNonStratifiableCheckQueries(t *testing.T) {
 		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
 			tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 			tuple.NewTupleKey("document:1", "restricted", "document:1#viewer"),
-		})
+		}, false)
 		require.NoError(t, err)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -813,7 +813,7 @@ func TestNonStratifiableCheckQueries(t *testing.T) {
 		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
 			tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 			tuple.NewTupleKey("document:1", "restrictedb", "document:1#viewer"),
-		})
+		}, false)
 		require.NoError(t, err)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -870,7 +870,7 @@ func TestResolveCheckDeterministic(t *testing.T) {
 			tuple.NewTupleKey("group:eng", "member", "group:fga#member"),
 			tuple.NewTupleKey("group:eng", "member", "user:jon"),
 			tuple.NewTupleKey("group:other1", "member", "group:other2#member"),
-		})
+		}, false)
 		require.NoError(t, err)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -927,7 +927,7 @@ func TestResolveCheckDeterministic(t *testing.T) {
 		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
 			tuple.NewTupleKey("document:budget", "admin", "user:*"),
 			tuple.NewTupleKeyWithCondition("document:budget", "viewer", "user:maria", "condX", nil),
-		})
+		}, false)
 		require.NoError(t, err)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -977,7 +977,7 @@ func TestResolveCheckDeterministic(t *testing.T) {
 
 		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
 			tuple.NewTupleKeyWithCondition("document:budget", "admin", "user:maria", "condX", nil),
-		})
+		}, false)
 		require.NoError(t, err)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -1034,7 +1034,7 @@ func TestCheckWithOneConcurrentGoroutineCausesNoDeadlock(t *testing.T) {
 		tuple.NewTupleKey("group:2", "member", "group:2a#member"),
 		tuple.NewTupleKey("group:2", "member", "group:2b#member"),
 		tuple.NewTupleKey("group:2b", "member", "user:jon"),
-	})
+	}, false)
 	require.NoError(t, err)
 
 	checker, checkResolverCloser := NewOrderedCheckResolvers(
@@ -1115,7 +1115,7 @@ func TestCheckConditions(t *testing.T) {
 		tuple.NewTupleKey("group:fga", "member", "user:jon"),
 	}
 
-	err = ds.Write(context.Background(), storeID, nil, tuples)
+	err = ds.Write(context.Background(), storeID, nil, tuples, false)
 	require.NoError(t, err)
 
 	checker, checkResolverCloser := NewOrderedCheckResolvers().Build()
@@ -1195,7 +1195,7 @@ func TestCheckDispatchCount(t *testing.T) {
 			tuple.NewTupleKey("folder:B", "parent", "folder:C"),
 			tuple.NewTupleKey("folder:A", "parent", "folder:B"),
 			tuple.NewTupleKey("doc:readme", "parent", "folder:A"),
-		})
+		}, false)
 		require.NoError(t, err)
 
 		checker := NewLocalChecker()
@@ -1262,7 +1262,7 @@ func TestCheckDispatchCount(t *testing.T) {
 			tuple.NewTupleKey("group:eng", "member", "group:2#member"),
 			tuple.NewTupleKey("group:eng", "member", "group:3#member"),
 			tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
-		})
+		}, false)
 		require.NoError(t, err)
 
 		checker := NewLocalChecker()
@@ -1319,7 +1319,7 @@ func TestCheckDispatchCount(t *testing.T) {
 		err := ds.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
 			tuple.NewTupleKey("document:1", "owner", "user:jon"),
 			tuple.NewTupleKey("document:2", "editor", "user:will"),
-		})
+		}, false)
 		require.NoError(t, err)
 
 		checker := NewLocalChecker()
@@ -1692,21 +1692,21 @@ func TestCheckWithFastPathOptimization(t *testing.T) {
 	for i := 0; i <= maxFolderID; i++ {
 		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
 			tuple.NewTupleKey("doc:1", "parent", fmt.Sprintf("folder:%d", i)),
-		})
+		}, false)
 		require.NoError(t, err)
 	}
 	// having 2 types will force a flush when there is a change in types "seen"
 	for i := 0; i <= maxDirectoryID; i++ {
 		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
 			tuple.NewTupleKey("doc:1", "parent", fmt.Sprintf("directory:%d", i)),
-		})
+		}, false)
 		require.NoError(t, err)
 	}
 
 	err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
 		tuple.NewTupleKey("folder:1", "viewer", "user:a"),
 		tuple.NewTupleKey(fmt.Sprintf("folder:%d", maxFolderID), "viewer", "user:b"),
-	})
+	}, false)
 	require.NoError(t, err)
 
 	ts, err := typesystem.NewAndValidate(context.Background(), model)
