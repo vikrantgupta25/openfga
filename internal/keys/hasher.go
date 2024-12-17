@@ -91,9 +91,16 @@ func (t tupleKeysHasher) Append(h hasher) error {
 			key.WriteString(cond.GetName())
 
 			// now consider condition context
-			if err := NewContextHasher(cond.GetContext()).Append(h); err != nil {
+			// hmm this actually writes direct to the hasher and isn't adding to the key
+			// being built in this loop
+			// if err := NewContextHasher(cond.GetContext()).Append(h); err != nil {
+			//	return err
+			//}
+			keyPart, err := NewContextHasher(cond.GetContext()).GenerateKey()
+			if err != nil {
 				return err
 			}
+			key.WriteString(keyPart)
 		}
 
 		key.WriteString("@")
@@ -160,6 +167,35 @@ func (c contextHasher) Append(h hasher) error {
 	return nil
 }
 
+func (c contextHasher) GenerateKey() (string, error) {
+	if c.Struct == nil {
+		return "", nil
+	}
+
+	cacheKey := strings.Builder{}
+
+	fields := c.GetFields()
+	keys := maps.Keys(fields)
+	sort.Strings(keys)
+
+	for _, key := range keys {
+		cacheKey.WriteString("'")
+		cacheKey.WriteString(key)
+		cacheKey.WriteString("'")
+
+		valueHasher := structValueHasher{fields[key]}
+		keyPart, err := valueHasher.GenerateKey()
+		if err != nil {
+			return "", err
+		}
+
+		cacheKey.WriteString(keyPart)
+		cacheKey.WriteString(",")
+	}
+
+	return cacheKey.String(), nil
+}
+
 // structValueHasher represents a hashable protobuf Struct value.
 //
 // The structValueHasher can be used to generate a stable hash of a protobuf Struct value.
@@ -204,4 +240,49 @@ func (s structValueHasher) Append(h hasher) error {
 	}
 
 	return nil
+}
+
+func (s structValueHasher) GenerateKey() (string, error) {
+	switch val := s.Kind.(type) {
+	case *structpb.Value_BoolValue:
+		return fmt.Sprintf("%v", val.BoolValue), nil
+	case *structpb.Value_NullValue:
+		return "null", nil
+	case *structpb.Value_StringValue:
+		return val.StringValue, nil
+	case *structpb.Value_NumberValue:
+		return strconv.FormatFloat(val.NumberValue, 'f', -1, 64), nil // -1 precision ensures we represent the 64-bit value with the maximum precision needed to represent it, see strconv#FormatFloat for more info.
+	case *structpb.Value_ListValue:
+		n := 0
+		values := val.ListValue.GetValues()
+		output := strings.Builder{}
+
+		for _, v := range values {
+			valueHasher := structValueHasher{v}
+			str, err := valueHasher.GenerateKey()
+			if err != nil {
+				return "", err
+			}
+
+			output.WriteString(str)
+
+			if n < len(values)-1 {
+				output.WriteString(",")
+			}
+
+			n++
+		}
+
+		return output.String(), nil
+	case *structpb.Value_StructValue:
+		cacheKey, err := contextHasher{val.StructValue}.GenerateKey()
+		if err != nil {
+			return "", err
+		}
+		return cacheKey, nil
+
+		// return contextHasher{val.StructValue}.Append(h)
+	default:
+		panic("unexpected structpb value encountered")
+	}
 }
