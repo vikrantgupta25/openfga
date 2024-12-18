@@ -1,6 +1,7 @@
 package encoder
 
 import (
+	"encoding/base64"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -58,4 +59,18 @@ func TestBase64Encode(t *testing.T) {
 	got, err := encoder.Encode(data)
 	require.NoError(t, err)
 	require.Equal(t, want, got)
+}
+
+func TestBase64DecodeError(t *testing.T) {
+	encoder := NewBase64Encoder()
+	data := []byte("the tv show 'schitt's creek' is great fun")
+	encoded, err := encoder.Encode(data)
+	require.NoError(t, err)
+
+	// underscores are invalid in base64
+	invalidInput := encoded + "_"
+	var expectedError base64.CorruptInputError
+
+	_, err = encoder.Decode(invalidInput)
+	require.ErrorAs(t, err, &expectedError)
 }
