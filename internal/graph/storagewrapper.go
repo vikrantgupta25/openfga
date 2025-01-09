@@ -275,7 +275,6 @@ func findInCache(cache storage.InMemoryCache[any], store, key string, invalidEnt
 			logger.Debug("CachedDatastore found in cache but has expired for invalidCacheKey",
 				zap.String("store_id", store),
 				zap.String("key", key),
-				zap.Time("invalidEntry.LastModified", invalidEntry.LastModified),
 				zap.Time("tupleEntry.LastModified", tupleEntry.LastModified))
 			return nil, false
 		}
@@ -288,7 +287,6 @@ func findInCache(cache storage.InMemoryCache[any], store, key string, invalidEnt
 					zap.String("store_id", store),
 					zap.String("key", key),
 					zap.String("invalidEntityKey", invalidEntityKey),
-					zap.Time("invalidEntry.LastModified", invalidEntry.LastModified),
 					zap.Time("tupleEntry.LastModified", tupleEntry.LastModified))
 				return nil, false
 			}

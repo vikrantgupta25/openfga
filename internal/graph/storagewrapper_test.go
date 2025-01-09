@@ -1287,6 +1287,7 @@ func TestCachedIterator(t *testing.T) {
 			store:             store,
 			operation:         "operation",
 			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
+			logger:            logger.NewNoopLogger(),
 			cacheKey:          cacheKey,
 			invalidEntityKeys: []string{},
 			cache:             mockCache,
