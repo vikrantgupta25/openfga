@@ -5,17 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"strconv"
-	"testing"
-	"time"
-
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 	"google.golang.org/grpc"
+	"io"
+	"net/http"
+	"testing"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
@@ -29,37 +26,6 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/tests"
 )
-
-func TestMatrixMemory(t *testing.T) {
-	testRunTestMatrix(t, "memory", true)
-	testRunTestMatrix(t, "memory", false)
-}
-
-func testRunTestMatrix(t *testing.T, engine string, experimental bool) {
-	t.Run("test_matrix_"+engine+"_experimental_"+strconv.FormatBool(experimental), func(t *testing.T) {
-		t.Cleanup(func() {
-			goleak.VerifyNone(t)
-		})
-		cfg := config.MustDefaultConfig()
-		if experimental {
-			cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations")
-		}
-		cfg.Log.Level = "error"
-		cfg.Datastore.Engine = engine
-		cfg.ListUsersDeadline = 0   // no deadline
-		cfg.ListObjectsDeadline = 0 // no deadline
-		// extend the timeout for the tests, coverage makes them slower
-		cfg.RequestTimeout = 10 * time.Second
-
-		cfg.CheckIteratorCache.Enabled = true
-
-		tests.StartServer(t, cfg)
-
-		conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
-
-		runTestMatrixSuite(t, openfgav1.NewOpenFGAServiceClient(conn))
-	})
-}
 
 func TestCheckMemory(t *testing.T) {
 	testRunAll(t, "memory")
@@ -325,26 +291,5 @@ func TestServerLogs(t *testing.T) {
 }
 
 func testRunAll(t *testing.T, engine string) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-	cfg := config.MustDefaultConfig()
-	cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations")
-	cfg.Log.Level = "error"
-	cfg.Datastore.Engine = engine
-	// extend the timeout for the tests, coverage makes them slower
-	cfg.RequestTimeout = 10 * time.Second
-
-	cfg.CheckIteratorCache.Enabled = true
-
-	// Some tests/stages are sensitive to the cache TTL,
-	// so we set it to a very low value to still exercise
-	// the Check iterator cache.
-	cfg.CheckIteratorCache.TTL = 1 * time.Nanosecond
-
-	tests.StartServer(t, cfg)
-
-	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
-
-	RunAllTests(t, openfgav1.NewOpenFGAServiceClient(conn))
+	RunAllTests(t, engine)
 }

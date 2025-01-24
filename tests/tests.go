@@ -12,7 +12,6 @@ import (
 	"github.com/openfga/openfga/cmd/run"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 )
 
@@ -35,9 +34,6 @@ func StartServer(t testing.TB, cfg *serverconfig.Config) {
 // StartServerWithContext starts a server in random ports and with a specific ServerContext and waits until it is healthy.
 // When the test ends, all resources are cleaned.
 func StartServerWithContext(t testing.TB, cfg *serverconfig.Config, serverCtx *run.ServerContext) {
-	container := storage.RunDatastoreTestContainer(t, cfg.Datastore.Engine)
-	cfg.Datastore.URI = container.GetConnectionURI(true)
-
 	ctx, cancel := context.WithCancel(context.Background())
 
 	httpPort, httpPortReleaser := testutils.TCPRandomPort()
