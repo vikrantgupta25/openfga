@@ -30,9 +30,29 @@ import (
 	"github.com/openfga/openfga/tests"
 )
 
+func TestMatrixPostgres(t *testing.T) {
+	testRunTestMatrix(t, "postgres", true)
+	testRunTestMatrix(t, "postgres", false)
+}
+func TestMatrixMySQL(t *testing.T) {
+	testRunTestMatrix(t, "mysql", true)
+	testRunTestMatrix(t, "mysql", false)
+}
+
 func TestMatrixMemory(t *testing.T) {
 	testRunTestMatrix(t, "memory", true)
 	testRunTestMatrix(t, "memory", false)
+}
+
+func TestMatrixSqlite(t *testing.T) {
+	testRunTestMatrix(t, "sqlite", true)
+	testRunTestMatrix(t, "sqlite", false)
+}
+
+func TestMatrixAll(t *testing.T) {
+	TestMatrixMySQL(t)
+	TestMatrixPostgres(t)
+	TestMatrixMemory(t)
 }
 
 func testRunTestMatrix(t *testing.T, engine string, experimental bool) {
@@ -57,6 +77,7 @@ func testRunTestMatrix(t *testing.T, engine string, experimental bool) {
 
 		conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 
+		// this needs to be mysql
 		runTestMatrixSuite(t, openfgav1.NewOpenFGAServiceClient(conn))
 	})
 }
