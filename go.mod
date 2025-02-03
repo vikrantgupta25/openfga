@@ -2,6 +2,8 @@ module github.com/openfga/openfga
 
 go 1.22.7
 
+replace github.com/go-sql-driver/mysql => /Users/justin.cohen/repos/openfga/mysql
+
 require (
 	github.com/Masterminds/squirrel v1.5.4
 	github.com/MicahParks/keyfunc/v2 v2.1.0

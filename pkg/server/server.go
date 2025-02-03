@@ -820,6 +820,7 @@ func (s *Server) Close() {
 	}
 
 	s.sharedCheckResources.Close()
+	// println("in server.go closing datastore")
 	s.datastore.Close()
 }
 

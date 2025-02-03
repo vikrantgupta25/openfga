@@ -32,32 +32,34 @@ import (
 
 func TestMatrixPostgres(t *testing.T) {
 	testRunTestMatrix(t, "postgres", true)
-	testRunTestMatrix(t, "postgres", false)
+	// testRunTestMatrix(t, "postgres", false)
 }
 func TestMatrixMySQL(t *testing.T) {
 	testRunTestMatrix(t, "mysql", true)
-	testRunTestMatrix(t, "mysql", false)
+	// testRunTestMatrix(t, "mysql", false)
 }
 
 func TestMatrixMemory(t *testing.T) {
 	testRunTestMatrix(t, "memory", true)
-	testRunTestMatrix(t, "memory", false)
+	// testRunTestMatrix(t, "memory", false)
 }
 
 func TestMatrixSqlite(t *testing.T) {
 	testRunTestMatrix(t, "sqlite", true)
-	testRunTestMatrix(t, "sqlite", false)
+	// testRunTestMatrix(t, "sqlite", false)
 }
 
 func TestMatrixAll(t *testing.T) {
 	TestMatrixMySQL(t)
-	TestMatrixPostgres(t)
-	TestMatrixMemory(t)
+	// TestMatrixPostgres(t)
+	// TestMatrixMemory(t)
+	//TestMatrixSqlite(t)
 }
 
 func testRunTestMatrix(t *testing.T, engine string, experimental bool) {
 	t.Run("test_matrix_"+engine+"_experimental_"+strconv.FormatBool(experimental), func(t *testing.T) {
 		t.Cleanup(func() {
+			t.Log("testRunTestMatrix cleanup")
 			goleak.VerifyNone(t)
 		})
 		cfg := config.MustDefaultConfig()
@@ -77,8 +79,8 @@ func testRunTestMatrix(t *testing.T, engine string, experimental bool) {
 
 		conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 
-		// this needs to be mysql
-		runTestMatrixSuite(t, openfgav1.NewOpenFGAServiceClient(conn))
+		runTestMatrix(t, testParams{typesystem.SchemaVersion1_1, openfgav1.NewOpenFGAServiceClient(conn)})
+		// runTestMatrixSuite(t, openfgav1.NewOpenFGAServiceClient(conn))
 	})
 }
 

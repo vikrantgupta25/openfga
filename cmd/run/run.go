@@ -887,6 +887,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	grpcServer.GracefulStop()
 
+	// TODO here
 	svr.Close()
 
 	authenticator.Close()

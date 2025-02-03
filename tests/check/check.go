@@ -70,7 +70,7 @@ func RunAllTests(t *testing.T, client ClientInterface) {
 func runTests(t *testing.T, params testParams) {
 	files := []string{
 		"tests/consolidated_1_1_tests.yaml",
-		"tests/abac_tests.yaml",
+		// "tests/abac_tests.yaml",
 	}
 
 	var allTestCases []individualTest
@@ -94,7 +94,7 @@ func runTests(t *testing.T, params testParams) {
 	for _, test := range allTestCases {
 		test := test
 		runTest(t, test, params, false)
-		runTest(t, test, params, true)
+		// runTest(t, test, params, true)
 	}
 }
 
@@ -1201,13 +1201,15 @@ condition xcond(x: string) {
 	ctx := context.Background()
 
 	t.Run(name, func(t *testing.T) {
-		stages := matrix.Stages
-		stages = append(stages, ttuCompleteTestingModelTest...)
-		stages = append(stages, complexityThreeTestingModelTest...)
-		stages = append(stages, complexityFourTestingModelTest...)
-		stages = append(stages, usersetCompleteTestingModelTest...)
+		// stages := matrix.Stages
+		var stages []*stage
+		// stages = append(stages, ttuCompleteTestingModelTest...) // no experimentals: no leak, experimentals: leak
+		// stages = append(stages, complexityThreeTestingModelTest...) // no experimentals: no leak, experimentals: no leak, both: no leak
+		stages = append(stages, complexityFourTestingModelTest...) // no experimentals: no leak, experimentals: leak
+		// stages = append(stages, usersetCompleteTestingModelTest...) // no experimentals: no leak, experimentals: leak
 		for _, stage := range stages {
 			t.Run("stage_"+stage.Name, func(t *testing.T) {
+				// defer goleak.VerifyNone(t)
 				resp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: name})
 				require.NoError(t, err)
 				storeID := resp.GetId()
@@ -1245,12 +1247,12 @@ condition xcond(x: string) {
 					t.Run("assertion_check_"+assertion.Name, func(t *testing.T) {
 						assertCheck(ctx, t, assertion, stage, client, storeID, modelID)
 					})
-					t.Run("assertion_list_objects_"+assertion.Name, func(t *testing.T) {
-						assertListObjects(ctx, t, assertion, stage, client, storeID, modelID)
-					})
-					t.Run("assertion_list_users_"+assertion.Name, func(t *testing.T) {
-						assertListUsers(ctx, t, assertion, client, storeID, modelID)
-					})
+					// t.Run("assertion_list_objects_"+assertion.Name, func(t *testing.T) {
+					//	assertListObjects(ctx, t, assertion, stage, client, storeID, modelID)
+					// })
+					//t.Run("assertion_list_users_"+assertion.Name, func(t *testing.T) {
+					//	assertListUsers(ctx, t, assertion, client, storeID, modelID)
+					//})
 				}
 			})
 		}
@@ -1385,6 +1387,6 @@ func assertListUsers(ctx context.Context, t *testing.T, assertion *checktest.Ass
 	}
 }
 
-func runTestMatrixSuite(t *testing.T, client ClientInterface) {
-	runTestMatrix(t, testParams{typesystem.SchemaVersion1_1, client})
-}
+// func runTestMatrixSuite(t *testing.T, client ClientInterface) {
+//	runTestMatrix(t, testParams{typesystem.SchemaVersion1_1, client})
+//}

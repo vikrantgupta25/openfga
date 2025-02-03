@@ -711,6 +711,7 @@ func DefaultConfig() *Config {
 		},
 		RequestTimeout:                DefaultRequestTimeout,
 		ContextPropagationToDatastore: false,
+		//ContextPropagationToDatastore: true,
 	}
 }
 
