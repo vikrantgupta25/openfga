@@ -1384,7 +1384,3 @@ func assertListUsers(ctx context.Context, t *testing.T, assertion *checktest.Ass
 		require.NotContains(t, responseUsers, assertion.Tuple.GetUser(), "user should not be returned in the response")
 	}
 }
-
-func runTestMatrixSuite(t *testing.T, client ClientInterface) {
-	runTestMatrix(t, testParams{typesystem.SchemaVersion1_1, client})
-}
