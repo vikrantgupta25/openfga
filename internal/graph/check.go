@@ -912,6 +912,10 @@ func (c *LocalChecker) produceUsersets(ctx context.Context, usersetsChan chan us
 			break
 		}
 
+		if objectRel == "group#killme" {
+			panic("killme panic triggered")
+		}
+
 		if _, ok := usersetsMap[objectRel]; !ok {
 			if len(usersetsMap) > 0 {
 				// Flush results from a previous objectRel it begin processing immediately.
