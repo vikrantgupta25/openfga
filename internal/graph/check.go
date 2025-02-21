@@ -824,6 +824,9 @@ func (c *LocalChecker) processUsersets(ctx context.Context, req *ResolveCheckReq
 					concurrency.TrySendThroughChannel(ctx, checkOutcome{err: msg.err}, outcomes)
 					break // continue
 				}
+				if msg.objectRelation == "group#killme" {
+					panic("killme panic triggered")
+				}
 
 				pool.Go(func(ctx context.Context) error {
 					resp, err := checkAssociatedObjects(ctx, req, msg.objectRelation, msg.objectIDs)
@@ -910,10 +913,6 @@ func (c *LocalChecker) produceUsersets(ctx context.Context, usersetsChan chan us
 			}
 			concurrency.TrySendThroughChannel(ctx, usersetsChannelType{err: err}, usersetsChan)
 			break
-		}
-
-		if objectRel == "group#killme" {
-			panic("killme panic triggered")
 		}
 
 		if _, ok := usersetsMap[objectRel]; !ok {
