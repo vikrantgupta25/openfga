@@ -217,7 +217,7 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 		cacheKey := storagewrappersutil.ReadKey(storeID, tk)
 		ds.internalStorage.mu.Lock()
 		newIterator := newSharedIterator(ds, cacheKey, ds.watchdogTTL, ds.maxAdmissionTime, 1000)
-		newIterator.initializationErr = mockErr
+		newIterator.init(nil, mockErr)
 		ds.internalStorage.iters[cacheKey] = &internalSharedIterator{
 			counter: 1,
 			iter:    newIterator,
@@ -422,7 +422,7 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 		cacheKey := storagewrappersutil.ReadUsersetTuplesKey(storeID, filter)
 		ds.internalStorage.mu.Lock()
 		newIterator := newSharedIterator(ds, cacheKey, ds.watchdogTTL, ds.maxAdmissionTime, 1000)
-		newIterator.initializationErr = mockErr
+		newIterator.init(nil, mockErr)
 		ds.internalStorage.iters[cacheKey] = &internalSharedIterator{
 			counter: 1,
 			iter:    newIterator,
@@ -629,7 +629,7 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 		cacheKey, _ := storagewrappersutil.ReadStartingWithUserKey(storeID, filter)
 		ds.internalStorage.mu.Lock()
 		newIterator := newSharedIterator(ds, cacheKey, ds.watchdogTTL, ds.maxAdmissionTime, 1000)
-		newIterator.initializationErr = mockErr
+		newIterator.init(nil, mockErr)
 		ds.internalStorage.iters[cacheKey] = &internalSharedIterator{
 			counter: 1,
 			iter:    newIterator,
@@ -1008,6 +1008,7 @@ func TestNewSharedIteratorDatastore_iter(t *testing.T) {
 			mockIterator.EXPECT().Next(gomock.Any()).Return(tupleOne, nil),
 			mockIterator.EXPECT().Next(gomock.Any()).Return(tupleTwo, nil),
 			mockIterator.EXPECT().Next(gomock.Any()).Return(tupleThree, nil),
+			mockIterator.EXPECT().Next(gomock.Any()).Return(nil, storage.ErrIteratorDone),
 			mockIterator.EXPECT().Stop(),
 		)
 		mockDatastore.EXPECT().
@@ -1133,40 +1134,6 @@ func TestNewSharedIteratorDatastore_iter(t *testing.T) {
 		_, err = iter3.Next(ctx)
 		require.ErrorIs(t, err, mockedError)
 	})
-
-	t.Run("ignore_context_cancel_error", func(t *testing.T) {
-		ctx := context.Background()
-		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-		storeID := ulid.Make().String()
-		internalStorage := NewSharedIteratorDatastoreStorage()
-		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
-			WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()))
-		mockIterator := mocks.NewMockIterator[*openfgav1.Tuple](mockController)
-		ts := timestamppb.New(time.Now())
-		tupleOne := &openfgav1.Tuple{Key: tuple.NewTupleKey("license:1", "owner", "user:1"), Timestamp: ts}
-		gomock.InOrder(
-			mockIterator.EXPECT().Next(gomock.Any()).Return(nil, context.Canceled), // the first one is "cancelled"
-			mockIterator.EXPECT().Next(gomock.Any()).Return(tupleOne, nil),
-			mockIterator.EXPECT().Stop(),
-		)
-		mockDatastore.EXPECT().
-			Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
-			Return(mockIterator, nil)
-		iter1, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
-		require.NoError(t, err)
-		// iter1 will be stopped later
-		_, err = iter1.Next(ctx)
-		require.ErrorIs(t, err, context.Canceled)
-		iter2, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
-		require.NoError(t, err)
-		// iter2 will be stopped later
-		tup1, err := iter2.Next(ctx)
-		require.NoError(t, err)
-		require.Equal(t, tupleOne, tup1)
-		iter1.Stop()
-		iter2.Stop()
-	})
-
 	t.Run("error_in_second_iter_fourth_item", func(t *testing.T) {
 		ctx := context.Background()
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
@@ -1251,7 +1218,7 @@ func TestNewSharedIteratorDatastore_iter(t *testing.T) {
 			mockIterator.EXPECT().Next(gomock.Any()).Return(tupleOne, nil),
 			mockIterator.EXPECT().Next(gomock.Any()).Return(tupleTwo, nil),
 			mockIterator.EXPECT().Next(gomock.Any()).Return(tupleThree, nil),
-			mockIterator.EXPECT().Next(gomock.Any()).Return(nil, mockedError),
+			mockIterator.EXPECT().Next(gomock.Any()).MinTimes(1).Return(nil, mockedError),
 			mockIterator.EXPECT().Stop(),
 		)
 		mockDatastore.EXPECT().
@@ -1311,6 +1278,7 @@ func TestNewSharedIteratorDatastore_iter(t *testing.T) {
 			WithMaxTTL(1*time.Second))
 		mockIterator := mocks.NewMockIterator[*openfgav1.Tuple](mockController)
 		gomock.InOrder(
+			mockIterator.EXPECT().Next(gomock.Any()).AnyTimes().Return(nil, nil), // this is for the cancellation
 			mockIterator.EXPECT().Stop(),
 		)
 		mockDatastore.EXPECT().
@@ -1340,6 +1308,7 @@ func TestNewSharedIteratorDatastore_iter(t *testing.T) {
 		tupleOne := &openfgav1.Tuple{Key: tuple.NewTupleKey("license:1", "owner", "user:1"), Timestamp: ts}
 		gomock.InOrder(
 			mockIterator.EXPECT().Next(gomock.Any()).Return(tupleOne, nil),
+			mockIterator.EXPECT().Next(gomock.Any()).Return(nil, storage.ErrIteratorDone),
 			mockIterator.EXPECT().Stop(),
 		)
 		mockDatastore.EXPECT().
@@ -1375,6 +1344,7 @@ func TestNewSharedIteratorDatastore_iter(t *testing.T) {
 		tupleOne := &openfgav1.Tuple{Key: tuple.NewTupleKey("license:1", "owner", "user:1"), Timestamp: ts}
 		gomock.InOrder(
 			mockIterator.EXPECT().Next(gomock.Any()).Return(tupleOne, nil),
+			mockIterator.EXPECT().Next(gomock.Any()).MinTimes(1).Return(nil, storage.ErrIteratorDone),
 			mockIterator.EXPECT().Stop(),
 		)
 		mockDatastore.EXPECT().
@@ -1490,6 +1460,7 @@ func TestNewSharedIteratorDatastore_iter(t *testing.T) {
 			WithMaxAdmissionTime(500*time.Millisecond))
 
 		mockIterator := mocks.NewMockIterator[*openfgav1.Tuple](mockController)
+		mockIterator.EXPECT().Next(gomock.Any()).MaxTimes(defaultProducerNumItems).Return(nil, storage.ErrIteratorDone)
 		mockIterator.EXPECT().Stop()
 
 		mockIterator2 := mocks.NewMockIterator[*openfgav1.Tuple](mockController)
