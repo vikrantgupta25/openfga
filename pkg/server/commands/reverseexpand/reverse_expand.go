@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 	"sync/atomic"
 
@@ -15,6 +16,7 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	languagegraph "github.com/openfga/language/pkg/go/graph"
 
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/condition"
@@ -244,6 +246,52 @@ func (c *ReverseExpandQuery) dispatch(
 	return c.execute(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 }
 
+func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
+	req *ReverseExpandRequest,
+	originalResultChan chan<- *ReverseExpandResult,
+	intersectionEdgeComparison *typesystem.IntersectionEdgeComparison,
+	resolutionMetadata *ResolutionMetadata) error {
+
+	//tmpResultChan := make(chan *ReverseExpandResult)
+	var leftHand []*languagegraph.WeightedAuthorizationModelEdge
+	if intersectionEdgeComparison.DirectEdgesAreLeastWeight {
+		leftHand = intersectionEdgeComparison.DirectEdges
+	} else {
+		leftHand = []*languagegraph.WeightedAuthorizationModelEdge{intersectionEdgeComparison.LowestEdge}
+	}
+	//g := graph.New(c.typesystem)
+
+	for _, newEdge := range leftHand {
+		// SOURCE: table
+
+		// TARGE: TO
+		// table#assigned
+		// user1
+		// user1:*
+		// account#user_in_context
+
+		log.Println("newedge", newEdge.GetFrom().GetLabel(), newEdge.GetTo().GetLabel())
+		/*
+		newEdge.GetFrom().GetLabel()
+		oldStyleEdge, err := g.GetPrunedRelationshipEdges(newEdge.GetFrom().GetLabel(), newEdge.GetTo().GetLabel())
+		r := &ReverseExpandRequest{
+			StoreID:          req.StoreID,
+			ObjectType:       req.ObjectType,
+			Relation:         req.Relation,
+			User:             req.User,
+			ContextualTuples: req.ContextualTuples,
+			Context:          req.Context,
+			edge:             innerLoopEdge,
+			Consistency:      req.Consistency,
+		}
+			*/
+	}
+
+	// This is a placeholder for handling intersections.
+	// The actual implementation will depend on the specific requirements of the intersection logic.
+	return nil
+}
+
 func (c *ReverseExpandQuery) execute(
 	ctx context.Context,
 	req *ReverseExpandRequest,
@@ -340,13 +388,18 @@ func (c *ReverseExpandQuery) execute(
 			// Need to get:
 			// 1. the lowest weight edge + all direct edges - ensure that the weight has the type
 			// 2. all the other edges
-			// 3. For all the non lowest weight edge, call checkSetOperation
-			newIntersections, reciprocalEdges, err := c.typesystem.GetLowestEdgesAndTheirSiblingsForIntersection(newEdge.GetTo().GetUniqueLabel(), sourceUserType)
+			// 3a. For all the non lowest weight edge (except direct edges group), call checkSetOperation(..intersection, siblings except direct edges group)
+			// 3b. For the direct edges group that are reciprocal edges, call checkSetOpertiaon(..union, direct edges group)
+			// 4. Check true only when 3a and 3b satisfy
+			intersectionEdgeComparison, err := c.typesystem.GetLowestEdgesAndTheirSiblingsForIntersection(newEdge.GetTo().GetUniqueLabel(), sourceUserType)
 			if err != nil {
 				c.logger.Error("Failed to get edges from weighted graph", zap.Error(err))
 				return err
 			}
-			c.logger.Debug("NewIntersections", zap.Any("newIntersections", newIntersections), zap.Any("reciprocalEdges", reciprocalEdges))
+			err = c.intersectionHandler(ctx, req, resultChan, intersectionEdgeComparison, resolutionMetadata)
+			if err != nil {
+				return err
+			}
 		}
 	}
 

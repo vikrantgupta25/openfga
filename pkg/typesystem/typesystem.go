@@ -1780,65 +1780,89 @@ func (t *TypeSystem) GetEdgesFromWeightedGraph(
 	return relevantEdges, needsCheck, nil
 }
 
+type IntersectionEdgeComparison struct {
+	LowestEdge                *graph.WeightedAuthorizationModelEdge   // nil if direct is lowest, otherwise lowest edge
+	Siblings                  []*graph.WeightedAuthorizationModelEdge // all non lowest and excluding direct edges siblings
+	DirectEdges               []*graph.WeightedAuthorizationModelEdge // all the direct edges
+	DirectEdgesAreLeastWeight bool                                    // whether direct edges are the lowest weight edges
+}
+
 // Need function to return the 1) lowest edges (if there are direct edges, all direct edges), 2) other edges that have path to sourceType
 // ([]*graph.WeightedAuthorizationModelEdge /* lowest weight edges*/, []*graph.WeightedAuthorizationModelEdge /* other edges*/, error)
 func (t *TypeSystem) GetLowestEdgesAndTheirSiblingsForIntersection(
 	targetTypeRelation string,
 	sourceType string,
-) ([]*graph.WeightedAuthorizationModelEdge, []*graph.WeightedAuthorizationModelEdge, error) {
+) (*IntersectionEdgeComparison, error) {
 	if t.authzWeightedGraph == nil {
-		return nil, nil, fmt.Errorf("weighted graph is nil")
+		return nil, fmt.Errorf("weighted graph is nil")
 	}
 
 	wg := t.authzWeightedGraph
 
 	currentNode, ok := wg.GetNodeByID(targetTypeRelation)
 	if !ok {
-		return nil, nil, fmt.Errorf("could not find node with label: %s", targetTypeRelation)
+		return nil, fmt.Errorf("could not find node with label: %s", targetTypeRelation)
 	}
 
 	// This means we cannot reach the source type requested, so there are no relevant edges.
 	if !hasPathTo(currentNode, sourceType) {
-		return nil, nil, nil
+		return nil, nil
 	}
 
 	edges, ok := wg.GetEdgesFromNode(currentNode)
 	if !ok {
-		return nil, nil, fmt.Errorf("no outgoing edges from node: %s", currentNode.GetUniqueLabel())
+		return nil, fmt.Errorf("no outgoing edges from node: %s", currentNode.GetUniqueLabel())
 	}
 
-	lowestEdges := make([]*graph.WeightedAuthorizationModelEdge, 0, len(edges))
+	directEdges := make([]*graph.WeightedAuthorizationModelEdge, 0, len(edges))
+	var lowestEdge *graph.WeightedAuthorizationModelEdge
+	directEdgesAreLowest := false
 	if currentNode.GetNodeType() == graph.OperatorNode {
 		switch currentNode.GetLabel() {
 		case graph.IntersectionOperator:
+			lowestWeight := 0
 
 			for _, edge := range edges {
-				if edge.GetEdgeType() == graph.DirectEdge {
-					lowestEdges = append(lowestEdges, edge)
+				if edge.GetEdgeType() == graph.DirectEdge && hasPathTo(edge, sourceType) {
+					directEdges = append(directEdges, edge)
+
+					directEdgesAreLowest = true
+					if weight, ok := edge.GetWeight(sourceType); ok {
+						if weight > lowestWeight {
+							lowestWeight = weight
+						}
+					}
 				}
 			}
 
-			if len(lowestEdges) == 0 {
-				lowestEdges = append(lowestEdges, utils.Reduce(edges, nil, cheapestEdgeTo(sourceType)))
+			for _, edge := range edges {
+				if edge.GetEdgeType() != graph.DirectEdge && hasPathTo(edge, sourceType) {
+					if weight, ok := edge.GetWeight(sourceType); ok {
+						if weight < lowestWeight {
+							lowestEdge = edge
+							lowestWeight = weight
+							directEdgesAreLowest = false
+						}
+					}
+				}
 			}
-
 		}
 	}
 
-	// Filter to only return edges which have a path to the sourceType
-	relevantEdges := slices.Collect(filterEdges(lowestEdges, func(edge *graph.WeightedAuthorizationModelEdge) bool {
-		return hasPathTo(edge, sourceType)
-	}))
-
-	reciprocalEdges := make([]*graph.WeightedAuthorizationModelEdge, 0, len(relevantEdges))
+	siblings := make([]*graph.WeightedAuthorizationModelEdge, 0, len(edges))
 
 	for _, edge := range edges {
-		if !slices.Contains(relevantEdges, edge) && hasPathTo(edge, sourceType) {
-			reciprocalEdges = append(reciprocalEdges, edge)
+		if !slices.Contains(directEdges, edge) && edge != lowestEdge && hasPathTo(edge, sourceType) {
+			siblings = append(siblings, edge)
 		}
 	}
 
-	return relevantEdges, reciprocalEdges, nil
+	return &IntersectionEdgeComparison{
+		LowestEdge:                lowestEdge,
+		Siblings:                  siblings,
+		DirectEdges:               directEdges,
+		DirectEdgesAreLeastWeight: directEdgesAreLowest,
+	}, nil
 }
 
 func filterEdges(s []*graph.WeightedAuthorizationModelEdge, predicate func(edge *graph.WeightedAuthorizationModelEdge) bool) func(func(edge *graph.WeightedAuthorizationModelEdge) bool) {
