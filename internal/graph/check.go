@@ -1517,7 +1517,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 	}
 }
 
-func (c *LocalChecker) checkSetOperation(
+func (c *LocalChecker) CheckSetOperation(
 	ctx context.Context,
 	req *ResolveCheckRequest,
 	setOpType setOperatorType,
@@ -1579,11 +1579,11 @@ func (c *LocalChecker) checkRewrite(
 	case *openfgav1.Userset_TupleToUserset:
 		return c.checkTTU(ctx, req, rewrite)
 	case *openfgav1.Userset_Union:
-		return c.checkSetOperation(ctx, req, unionSetOperator, union, rw.Union.GetChild()...)
+		return c.CheckSetOperation(ctx, req, unionSetOperator, union, rw.Union.GetChild()...)
 	case *openfgav1.Userset_Intersection:
-		return c.checkSetOperation(ctx, req, intersectionSetOperator, intersection, rw.Intersection.GetChild()...)
+		return c.CheckSetOperation(ctx, req, intersectionSetOperator, intersection, rw.Intersection.GetChild()...)
 	case *openfgav1.Userset_Difference:
-		return c.checkSetOperation(ctx, req, exclusionSetOperator, exclusion, rw.Difference.GetBase(), rw.Difference.GetSubtract())
+		return c.CheckSetOperation(ctx, req, exclusionSetOperator, exclusion, rw.Difference.GetBase(), rw.Difference.GetSubtract())
 	default:
 		return func(ctx context.Context) (*ResolveCheckResponse, error) {
 			return nil, ErrUnknownSetOperator

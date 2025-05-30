@@ -1780,6 +1780,67 @@ func (t *TypeSystem) GetEdgesFromWeightedGraph(
 	return relevantEdges, needsCheck, nil
 }
 
+// Need function to return the 1) lowest edges (if there are direct edges, all direct edges), 2) other edges that have path to sourceType
+// ([]*graph.WeightedAuthorizationModelEdge /* lowest weight edges*/, []*graph.WeightedAuthorizationModelEdge /* other edges*/, error)
+func (t *TypeSystem) GetLowestEdgesAndTheirSiblingsForIntersection(
+	targetTypeRelation string,
+	sourceType string,
+) ([]*graph.WeightedAuthorizationModelEdge, []*graph.WeightedAuthorizationModelEdge, error) {
+	if t.authzWeightedGraph == nil {
+		return nil, nil, fmt.Errorf("weighted graph is nil")
+	}
+
+	wg := t.authzWeightedGraph
+
+	currentNode, ok := wg.GetNodeByID(targetTypeRelation)
+	if !ok {
+		return nil, nil, fmt.Errorf("could not find node with label: %s", targetTypeRelation)
+	}
+
+	// This means we cannot reach the source type requested, so there are no relevant edges.
+	if !hasPathTo(currentNode, sourceType) {
+		return nil, nil, nil
+	}
+
+	edges, ok := wg.GetEdgesFromNode(currentNode)
+	if !ok {
+		return nil, nil, fmt.Errorf("no outgoing edges from node: %s", currentNode.GetUniqueLabel())
+	}
+
+	lowestEdges := make([]*graph.WeightedAuthorizationModelEdge, 0, len(edges))
+	if currentNode.GetNodeType() == graph.OperatorNode {
+		switch currentNode.GetLabel() {
+		case graph.IntersectionOperator:
+
+			for _, edge := range edges {
+				if edge.GetEdgeType() == graph.DirectEdge {
+					lowestEdges = append(lowestEdges, edge)
+				}
+			}
+
+			if len(lowestEdges) == 0 {
+				lowestEdges = append(lowestEdges, utils.Reduce(edges, nil, cheapestEdgeTo(sourceType)))
+			}
+
+		}
+	}
+
+	// Filter to only return edges which have a path to the sourceType
+	relevantEdges := slices.Collect(filterEdges(lowestEdges, func(edge *graph.WeightedAuthorizationModelEdge) bool {
+		return hasPathTo(edge, sourceType)
+	}))
+
+	reciprocalEdges := make([]*graph.WeightedAuthorizationModelEdge, 0, len(relevantEdges))
+
+	for _, edge := range edges {
+		if !slices.Contains(relevantEdges, edge) && hasPathTo(edge, sourceType) {
+			reciprocalEdges = append(reciprocalEdges, edge)
+		}
+	}
+
+	return relevantEdges, reciprocalEdges, nil
+}
+
 func filterEdges(s []*graph.WeightedAuthorizationModelEdge, predicate func(edge *graph.WeightedAuthorizationModelEdge) bool) func(func(edge *graph.WeightedAuthorizationModelEdge) bool) {
 	return func(yield func(edge *graph.WeightedAuthorizationModelEdge) bool) {
 		for _, item := range s {
@@ -1826,6 +1887,8 @@ func cheapestEdgeTo(dst string) func(*graph.WeightedAuthorizationModelEdge, *gra
 		return lowest
 	}
 }
+
+// need something like cheapestOrDirectEdgesTo
 
 func flattenUserset(relationDef *openfgav1.Userset) []*openfgav1.TupleToUserset {
 	output := make([]*openfgav1.TupleToUserset, 0)

@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -316,17 +317,38 @@ func (c *ReverseExpandQuery) execute(
 
 	targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
 
-	/* TODO: the logic in this commented block is for implementation by follow up branch
+	/* TODO: the logic in this commented block is for implementation by follow up branch*/
 	targetTypeRel := tuple.ToObjectRelationString(req.ObjectType, req.Relation)
-	edges, needsCheck, err := c.typesystem.GetEdgesFromWeightedGraph(targetTypeRel, sourceUserType)
+	newEdges, needsCheck, err := c.typesystem.GetEdgesFromWeightedGraph(targetTypeRel, sourceUserType)
 
 	if err == nil {
-	// errs = c.LoopOnWeightedEdges(edges, ...otherStuff)
+		// errs = c.LoopOnWeightedEdges(edges, ...otherStuff)
 	} else {
-	// log a message for why GetEdgesFromWeightedGraph failed and then
-	// let this continue to the old implementation
+		// log a message for why GetEdgesFromWeightedGraph failed and then
+		// let this continue to the old implementation
 	}
-	*/
+	/**/
+	c.logger.Debug("NeedsCheck", zap.Bool("needsCheck", needsCheck))
+	for _, newEdge := range newEdges {
+		// check intersection
+		c.logger.Debug("NewEdge",
+			zap.String("fromLabel", newEdge.GetFrom().GetUniqueLabel()),
+			zap.String("toLabel", newEdge.GetTo().GetUniqueLabel()),
+			zap.String("edgeType", newEdge.GetTo().GetLabel()))
+		if newEdge.GetTo().GetLabel() == "intersection" {
+			// we will then need to get the lowest edge from there
+			// Need to get:
+			// 1. the lowest weight edge + all direct edges - ensure that the weight has the type
+			// 2. all the other edges
+			// 3. For all the non lowest weight edge, call checkSetOperation
+			newIntersections, reciprocalEdges, err := c.typesystem.GetLowestEdgesAndTheirSiblingsForIntersection(newEdge.GetTo().GetUniqueLabel(), sourceUserType)
+			if err != nil {
+				c.logger.Error("Failed to get edges from weighted graph", zap.Error(err))
+				return err
+			}
+			c.logger.Debug("NewIntersections", zap.Any("newIntersections", newIntersections), zap.Any("reciprocalEdges", reciprocalEdges))
+		}
+	}
 
 	g := graph.New(c.typesystem)
 
@@ -339,10 +361,21 @@ func (c *ReverseExpandQuery) execute(
 
 	var errs error
 
+	// If we know it is an intersection
+	// create interception channel
+	// we choose the lowest weight edge
+	// calling the loop on edges below
+	// the result will be in the interception channel
+	// listen to the interception channel.  When we receive the result, we call graph.checkSetOperation and if true, return the result via the resultChan
+
+	// For exclusion, it will be similar. However, instead of going through checkSetOperation, it will be part of graph.exclusion
+	// If the sub returns true, we will return false (i.e., ignore the result).  Otherwise, it will be true and return result via the resultChan
 LoopOnEdges:
 	for _, edge := range edges {
 		innerLoopEdge := edge
 		intersectionOrExclusionInPreviousEdges := intersectionOrExclusionInPreviousEdges || innerLoopEdge.TargetReferenceInvolvesIntersectionOrExclusion
+		// the weighted graph will tell us whether this is intersection or exclusion (as well as the children)
+
 		r := &ReverseExpandRequest{
 			StoreID:          req.StoreID,
 			ObjectType:       req.ObjectType,
