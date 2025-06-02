@@ -37,9 +37,9 @@ var (
 )
 
 const (
-	unionSetOperator setOperatorType = iota
-	intersectionSetOperator
-	exclusionSetOperator
+	UnionSetOperator setOperatorType = iota
+	IntersectionSetOperator
+	ExclusionSetOperator
 )
 
 type checkOutcome struct {
@@ -254,7 +254,7 @@ func union(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFu
 
 // intersection implements a CheckFuncReducer that requires all of the provided CheckHandlerFunc to resolve
 // to an allowed outcome. The first falsey or erroneous outcome causes premature termination of the reducer.
-func intersection(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (resp *ResolveCheckResponse, err error) {
+func Intersection(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (resp *ResolveCheckResponse, err error) {
 	if len(handlers) == 0 {
 		return &ResolveCheckResponse{
 			Allowed: false,
@@ -1528,16 +1528,16 @@ func (c *LocalChecker) CheckSetOperation(
 
 	var reducerKey string
 	switch setOpType {
-	case unionSetOperator, intersectionSetOperator, exclusionSetOperator:
-		if setOpType == unionSetOperator {
+	case UnionSetOperator, IntersectionSetOperator, ExclusionSetOperator:
+		if setOpType == UnionSetOperator {
 			reducerKey = "union"
 		}
 
-		if setOpType == intersectionSetOperator {
+		if setOpType == IntersectionSetOperator {
 			reducerKey = "intersection"
 		}
 
-		if setOpType == exclusionSetOperator {
+		if setOpType == ExclusionSetOperator {
 			reducerKey = "exclusion"
 		}
 
@@ -1579,11 +1579,11 @@ func (c *LocalChecker) checkRewrite(
 	case *openfgav1.Userset_TupleToUserset:
 		return c.checkTTU(ctx, req, rewrite)
 	case *openfgav1.Userset_Union:
-		return c.CheckSetOperation(ctx, req, unionSetOperator, union, rw.Union.GetChild()...)
+		return c.CheckSetOperation(ctx, req, UnionSetOperator, union, rw.Union.GetChild()...)
 	case *openfgav1.Userset_Intersection:
-		return c.CheckSetOperation(ctx, req, intersectionSetOperator, intersection, rw.Intersection.GetChild()...)
+		return c.CheckSetOperation(ctx, req, IntersectionSetOperator, Intersection, rw.Intersection.GetChild()...)
 	case *openfgav1.Userset_Difference:
-		return c.CheckSetOperation(ctx, req, exclusionSetOperator, exclusion, rw.Difference.GetBase(), rw.Difference.GetSubtract())
+		return c.CheckSetOperation(ctx, req, ExclusionSetOperator, exclusion, rw.Difference.GetBase(), rw.Difference.GetSubtract())
 	default:
 		return func(ctx context.Context) (*ResolveCheckResponse, error) {
 			return nil, ErrUnknownSetOperator

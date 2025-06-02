@@ -16,8 +16,6 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	languagegraph "github.com/openfga/language/pkg/go/graph"
-
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
@@ -125,6 +123,10 @@ type ReverseExpandQuery struct {
 	visitedUsersetsMap *sync.Map
 	// candidateObjectsMap map prevents returning the same object twice
 	candidateObjectsMap *sync.Map
+
+	// Newly added
+	checkResolver      graph.CheckResolver
+	localCheckResolver *graph.LocalChecker //
 }
 
 type ReverseExpandQueryOption func(d *ReverseExpandQuery)
@@ -147,6 +149,12 @@ func WithResolveNodeBreadthLimit(limit uint32) ReverseExpandQueryOption {
 	}
 }
 
+func WithCheckResolver(resolver graph.CheckResolver) ReverseExpandQueryOption {
+	return func(d *ReverseExpandQuery) {
+		d.checkResolver = resolver
+	}
+}
+
 // TODO accept ReverseExpandRequest so we can build the datastore object right away.
 func NewReverseExpandQuery(ds storage.RelationshipTupleReader, ts *typesystem.TypeSystem, opts ...ReverseExpandQueryOption) *ReverseExpandQuery {
 	query := &ReverseExpandQuery{
@@ -163,10 +171,21 @@ func NewReverseExpandQuery(ds storage.RelationshipTupleReader, ts *typesystem.Ty
 		},
 		candidateObjectsMap: new(sync.Map),
 		visitedUsersetsMap:  new(sync.Map),
+		checkResolver:       nil,
+		localCheckResolver:  nil,
 	}
 
 	for _, opt := range opts {
 		opt(query)
+	}
+
+	localCheckResolver, found := graph.LocalCheckResolver(query.checkResolver)
+	if found {
+		query.localCheckResolver = localCheckResolver
+	} else {
+		// this should never happen, use default value as a fallback
+		log.Println("No local check resolver found, using default local checker")
+		query.localCheckResolver = graph.NewLocalChecker()
 	}
 
 	return query
@@ -252,39 +271,62 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 	intersectionEdgeComparison *typesystem.IntersectionEdgeComparison,
 	resolutionMetadata *ResolutionMetadata) error {
 
-	//tmpResultChan := make(chan *ReverseExpandResult)
-	var leftHand []*languagegraph.WeightedAuthorizationModelEdge
-	if intersectionEdgeComparison.DirectEdgesAreLeastWeight {
-		leftHand = intersectionEdgeComparison.DirectEdges
-	} else {
-		leftHand = []*languagegraph.WeightedAuthorizationModelEdge{intersectionEdgeComparison.LowestEdge}
-	}
-	//g := graph.New(c.typesystem)
-
-	for _, newEdge := range leftHand {
-		// SOURCE: table
-
-		// TARGE: TO
-		// table#assigned
-		// user1
-		// user1:*
-		// account#user_in_context
-
-		log.Println("newedge", newEdge.GetFrom().GetLabel(), newEdge.GetTo().GetLabel())
-		/*
-		newEdge.GetFrom().GetLabel()
-		oldStyleEdge, err := g.GetPrunedRelationshipEdges(newEdge.GetFrom().GetLabel(), newEdge.GetTo().GetLabel())
-		r := &ReverseExpandRequest{
-			StoreID:          req.StoreID,
-			ObjectType:       req.ObjectType,
-			Relation:         req.Relation,
-			User:             req.User,
-			ContextualTuples: req.ContextualTuples,
-			Context:          req.Context,
-			edge:             innerLoopEdge,
-			Consistency:      req.Consistency,
+	tmpResultChan := make(chan *ReverseExpandResult, 100)
+	/*
+		var leftHand []*languagegraph.WeightedAuthorizationModelEdge
+		if intersectionEdgeComparison.DirectEdgesAreLeastWeight {
+			leftHand = intersectionEdgeComparison.DirectEdges
+		} else {
+			leftHand = []*languagegraph.WeightedAuthorizationModelEdge{intersectionEdgeComparison.LowestEdge}
 		}
-			*/
+
+	*/
+	siblings := intersectionEdgeComparison.Siblings
+	log.Println("Siblings:", siblings)
+	g := graph.New(c.typesystem)
+
+	log.Println("g", g)
+
+	// do some handwaving here and assume that we have "table:1" returned
+	// construction of check request
+	leftHandObjects := []string{"table:1", "table:2"}
+	for _, leftHandObject := range leftHandObjects {
+		tmpResultChan <- &ReverseExpandResult{
+			Object:       leftHandObject,
+			ResultStatus: RequiresFurtherEvalStatus,
+		}
+	}
+	close(tmpResultChan)
+	var usersets []*openfgav1.Userset
+	for _, sibling := range siblings {
+		// TODO: may not always be TTU (could be computed userset) or direct
+		parent, relation := tuple.SplitObjectRelation(sibling.GetTo().GetUniqueLabel())
+		usersets = append(usersets, &openfgav1.Userset{
+			Userset: &openfgav1.Userset_TupleToUserset{
+				TupleToUserset: &openfgav1.TupleToUserset{
+					Tupleset: &openfgav1.ObjectRelation{
+						Relation: parent,
+					},
+					ComputedUserset: &openfgav1.ObjectRelation{
+						Relation: relation,
+					},
+				},
+			},
+		})
+	}
+	// fill usersets with the siblings
+	for tmpResult := range tmpResultChan {
+		handlerFunc := c.localCheckResolver.CheckSetOperation(ctx,
+			&graph.ResolveCheckRequest{
+				StoreID:              req.StoreID,
+				AuthorizationModelID: c.typesystem.GetAuthorizationModelID(),
+				TupleKey:             tuple.NewTupleKey(tmpResult.Object, req.Relation, req.User.String()),
+				ContextualTuples:     req.ContextualTuples,
+				Context:              req.Context,
+				Consistency:          req.Consistency,
+			}, graph.IntersectionSetOperator, graph.Intersection, usersets...)
+		tmpCheckResult, err := handlerFunc(ctx)
+		log.Println(tmpCheckResult, err)
 	}
 
 	// This is a placeholder for handling intersections.

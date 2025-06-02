@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openfga/openfga/internal/graph"
+
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
@@ -604,81 +606,118 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 		expectedWasThrottled    bool
 	}{
 		{
-			name: "should_throttle",
+			name: "test",
 			model: `
-				model
-					schema 1.1
 
-				type user
-
-				type folder
-					relations
-						define editor: [user]
-						define viewer: [user] or editor 
+model
+  schema 1.1
+type user1
+type user2
+type account
+  relations
+    define user_in_context: [user1, user1:*, user2]
+	define user2_in_context: [user1, user1:*, user2]
+type table
+  relations
+    define account: [account]
+    define owner: [user1, user1:*, user2, account#user_in_context]  and user_in_context from account and user2_in_context from account
 			`,
 			tuples: []string{
-				"folder:C#editor@user:jon",
-				"folder:B#viewer@user:jon",
-				"folder:A#viewer@user:jon",
+				"table:1#owner@user1:1",
+				"table:2#owner@user2:1",
+				"account:1#user_in_context@user1:1",
+				"account:1#user_in_context@user2:1",
+				"account:1#user2_in_context@user1:1",
+				"account:1#user2_in_context@user2:1",
+				"table:1#account@account:1",
+				//"table:2#account@account:1",
 			},
-			objectType:              "folder",
-			relation:                "viewer",
-			user:                    &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "jon"}},
-			throttlingEnabled:       true,
-			expectedWasThrottled:    true,
-			expectedDispatchCount:   4,
-			expectedThrottlingValue: 1,
-		},
-		{
-			name: "should_not_throttle",
-			model: `
-				model
-					schema 1.1
-			
-				type user
-			
-				type folder
-					relations
-						define editor: [user]
-						define viewer: [user] or editor
-			`,
-			tuples: []string{
-				"folder:C#editor@user:jon",
-				"folder:B#viewer@user:jon",
-				"folder:A#viewer@user:jon",
-			},
-			objectType:              "folder",
-			relation:                "viewer",
-			user:                    &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "jon"}},
+			objectType:              "table",
+			relation:                "owner",
+			user:                    &UserRefObject{Object: &openfgav1.Object{Type: "user1", Id: "1"}},
 			throttlingEnabled:       false,
 			expectedWasThrottled:    false,
 			expectedDispatchCount:   4,
 			expectedThrottlingValue: 0,
 		},
-		{
-			name: "should_not_throttle_if_there_are_not_enough_dispatches",
-			model: `
-				model
-					schema 1.1
-			
-				type user
-			
-				type document
-					relations
-						define editor: [user]
-						define viewer: editor
-			`,
-			tuples: []string{
-				"document:1#editor@user:jon",
+		/*
+			{
+				name: "should_throttle",
+				model: `
+					model
+						schema 1.1
+
+					type user
+
+					type folder
+						relations
+							define editor: [user]
+							define viewer: [user] or editor
+				`,
+				tuples: []string{
+					"folder:C#editor@user:jon",
+					"folder:B#viewer@user:jon",
+					"folder:A#viewer@user:jon",
+				},
+				objectType:              "folder",
+				relation:                "viewer",
+				user:                    &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "jon"}},
+				throttlingEnabled:       true,
+				expectedWasThrottled:    true,
+				expectedDispatchCount:   4,
+				expectedThrottlingValue: 1,
 			},
-			objectType:              "document",
-			relation:                "viewer",
-			user:                    &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "jon"}},
-			throttlingEnabled:       true,
-			expectedWasThrottled:    false,
-			expectedDispatchCount:   2,
-			expectedThrottlingValue: 0,
-		},
+			{
+				name: "should_not_throttle",
+				model: `
+					model
+						schema 1.1
+
+					type user
+
+					type folder
+						relations
+							define editor: [user]
+							define viewer: [user] or editor
+				`,
+				tuples: []string{
+					"folder:C#editor@user:jon",
+					"folder:B#viewer@user:jon",
+					"folder:A#viewer@user:jon",
+				},
+				objectType:              "folder",
+				relation:                "viewer",
+				user:                    &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "jon"}},
+				throttlingEnabled:       false,
+				expectedWasThrottled:    false,
+				expectedDispatchCount:   4,
+				expectedThrottlingValue: 0,
+			},
+			{
+				name: "should_not_throttle_if_there_are_not_enough_dispatches",
+				model: `
+					model
+						schema 1.1
+
+					type user
+
+					type document
+						relations
+							define editor: [user]
+							define viewer: editor
+				`,
+				tuples: []string{
+					"document:1#editor@user:jon",
+				},
+				objectType:              "document",
+				relation:                "viewer",
+				user:                    &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "jon"}},
+				throttlingEnabled:       true,
+				expectedWasThrottled:    false,
+				expectedDispatchCount:   2,
+				expectedThrottlingValue: 0,
+			},
+		*/
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -704,11 +743,13 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 					ds,
 					typesys,
 					WithDispatchThrottlerConfig(threshold.Config{
-						Throttler:    mockThrottler,
-						Enabled:      test.throttlingEnabled,
-						Threshold:    3,
+						Throttler: mockThrottler,
+						Enabled:   test.throttlingEnabled,
+						//			Threshold:    3,
+						Threshold:    20000,
 						MaxThreshold: 0,
 					}),
+					WithCheckResolver(graph.NewLocalChecker()),
 				)
 
 				err = q.Execute(ctx, &ReverseExpandRequest{

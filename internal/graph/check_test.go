@@ -1235,29 +1235,48 @@ func TestCheckDispatchCount(t *testing.T) {
 
 	t.Run("dispatch_count_ttu", func(t *testing.T) {
 		storeID := ulid.Make().String()
+		/*
+			model := parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
 
+				type user
+
+				type folder
+					relations
+						define viewer: [user] or viewer from parent
+						define parent: [folder]
+
+				type doc
+					relations
+						define viewer: [user] or viewer from parent
+						define parent: [folder]
+				`)
+		*/
 		model := parser.MustTransformDSLToProto(`
-			model
-				schema 1.1
-
-			type user
-
-			type folder
-				relations
-					define viewer: [user] or viewer from parent
-					define parent: [folder]
-
-			type doc
-				relations
-					define viewer: [user] or viewer from parent
-					define parent: [folder]
-			`)
+model
+  schema 1.1
+type user
+type account
+  relations
+    define user_in_context: [user]
+type table
+  relations
+    define account: [account]
+    define owner: [user] and user_in_context from account
+`)
 
 		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
-			tuple.NewTupleKey("folder:C", "viewer", "user:jon"),
-			tuple.NewTupleKey("folder:B", "parent", "folder:C"),
-			tuple.NewTupleKey("folder:A", "parent", "folder:B"),
-			tuple.NewTupleKey("doc:readme", "parent", "folder:A"),
+			/*
+				tuple.NewTupleKey("folder:C", "viewer", "user:jon"),
+				tuple.NewTupleKey("folder:B", "parent", "folder:C"),
+				tuple.NewTupleKey("folder:A", "parent", "folder:B"),
+				tuple.NewTupleKey("doc:readme", "parent", "folder:A"),
+
+			*/
+			tuple.NewTupleKey("table:1", "owner", "user:1"),
+			tuple.NewTupleKey("account:1", "user_in_context", "user:1"),
+			tuple.NewTupleKey("table:1", "account", "account:1"),
 		})
 		require.NoError(t, err)
 
@@ -1276,8 +1295,9 @@ func TestCheckDispatchCount(t *testing.T) {
 		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: model.GetId(),
-			TupleKey:             tuple.NewTupleKey("doc:readme", "viewer", "user:jon"),
-			RequestMetadata:      checkRequestMetadata,
+			//TupleKey:             tuple.NewTupleKey("doc:readme", "viewer", "user:jon"),
+			TupleKey:        tuple.NewTupleKey("table:1", "owner", "user:1"),
+			RequestMetadata: checkRequestMetadata,
 		})
 		require.NoError(t, err)
 		require.True(t, resp.Allowed)
