@@ -16,6 +16,7 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
@@ -267,10 +268,9 @@ func (c *ReverseExpandQuery) dispatch(
 
 func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 	req *ReverseExpandRequest,
-	originalResultChan chan<- *ReverseExpandResult,
+	resultChan chan<- *ReverseExpandResult,
 	intersectionEdgeComparison *typesystem.IntersectionEdgeComparison,
-	resolutionMetadata *ResolutionMetadata) error {
-
+	_ *ResolutionMetadata) error {
 	tmpResultChan := make(chan *ReverseExpandResult, 100)
 	/*
 		var leftHand []*languagegraph.WeightedAuthorizationModelEdge
@@ -281,8 +281,6 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 		}
 
 	*/
-	siblings := intersectionEdgeComparison.Siblings
-	log.Println("Siblings:", siblings)
 	g := graph.New(c.typesystem)
 
 	log.Println("g", g)
@@ -297,22 +295,18 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 		}
 	}
 	close(tmpResultChan)
-	var usersets []*openfgav1.Userset
+	siblings := intersectionEdgeComparison.Siblings
+	usersets := make([]*openfgav1.Userset, 0, len(siblings)+1)
+	if !intersectionEdgeComparison.DirectEdgesAreLeastWeight {
+		usersets = append(usersets, typesystem.This())
+	}
+
 	for _, sibling := range siblings {
-		// TODO: may not always be TTU (could be computed userset) or direct
-		parent, relation := tuple.SplitObjectRelation(sibling.GetTo().GetUniqueLabel())
-		usersets = append(usersets, &openfgav1.Userset{
-			Userset: &openfgav1.Userset_TupleToUserset{
-				TupleToUserset: &openfgav1.TupleToUserset{
-					Tupleset: &openfgav1.ObjectRelation{
-						Relation: parent,
-					},
-					ComputedUserset: &openfgav1.ObjectRelation{
-						Relation: relation,
-					},
-				},
-			},
-		})
+		userset, err := c.typesystem.ConstructUserset(ctx, sibling.GetEdgeType(), sibling.GetTo().GetUniqueLabel())
+		if err != nil {
+			return fmt.Errorf("construct userset: %w", err)
+		}
+		usersets = append(usersets, userset)
 	}
 	// fill usersets with the siblings
 	for tmpResult := range tmpResultChan {
@@ -324,9 +318,18 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 				ContextualTuples:     req.ContextualTuples,
 				Context:              req.Context,
 				Consistency:          req.Consistency,
+				RequestMetadata:      &graph.ResolveCheckRequestMetadata{},
 			}, graph.IntersectionSetOperator, graph.Intersection, usersets...)
 		tmpCheckResult, err := handlerFunc(ctx)
-		log.Println(tmpCheckResult, err)
+		if err != nil {
+			return fmt.Errorf("check set operation: %w", err)
+		}
+		if tmpCheckResult.GetAllowed() {
+			resultChan <- &ReverseExpandResult{
+				Object:       tmpResult.Object,
+				ResultStatus: NoFurtherEvalStatus,
+			}
+		}
 	}
 
 	// This is a placeholder for handling intersections.
@@ -411,13 +414,13 @@ func (c *ReverseExpandQuery) execute(
 	targetTypeRel := tuple.ToObjectRelationString(req.ObjectType, req.Relation)
 	newEdges, needsCheck, err := c.typesystem.GetEdgesFromWeightedGraph(targetTypeRel, sourceUserType)
 
-	if err == nil {
-		// errs = c.LoopOnWeightedEdges(edges, ...otherStuff)
-	} else {
+	if err != nil {
+		log.Println("Error", err)
 		// log a message for why GetEdgesFromWeightedGraph failed and then
 		// let this continue to the old implementation
+		return err
 	}
-	/**/
+
 	c.logger.Debug("NeedsCheck", zap.Bool("needsCheck", needsCheck))
 	for _, newEdge := range newEdges {
 		// check intersection
@@ -442,6 +445,7 @@ func (c *ReverseExpandQuery) execute(
 			if err != nil {
 				return err
 			}
+			return nil
 		}
 	}
 

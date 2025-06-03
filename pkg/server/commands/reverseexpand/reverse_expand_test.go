@@ -7,8 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openfga/openfga/internal/graph"
-
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
@@ -16,6 +14,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/pkg/dispatch"
@@ -620,17 +619,26 @@ type account
 type table
   relations
     define account: [account]
-    define owner: [user1, user1:*, user2, account#user_in_context]  and user_in_context from account and user2_in_context from account
+    define tmp_user_in_context: user_in_context from account
+	define or_1: [user1]
+	define or_2: [user1]
+	define inner_and: [user1] and tmp_user_in_context
+    #define owner: [user1, user1:*, user2, account#user_in_context]  and tmp_user_in_context and user2_in_context from account
+	define owner: [user1, user1:*, user2, account#user_in_context] and ((or_1 and or_2) or inner_and) and user2_in_context from account
+
 			`,
 			tuples: []string{
-				"table:1#owner@user1:1",
+				// "table:1#owner@user1:1",
 				"table:2#owner@user2:1",
 				"account:1#user_in_context@user1:1",
 				"account:1#user_in_context@user2:1",
 				"account:1#user2_in_context@user1:1",
 				"account:1#user2_in_context@user2:1",
 				"table:1#account@account:1",
-				//"table:2#account@account:1",
+				"table:1#or_1@user1:1",
+				"table:1#or_2@user1:1",
+				// "table:2#account@account:1",
+				"table:1#owner@account:1#user_in_context",
 			},
 			objectType:              "table",
 			relation:                "owner",

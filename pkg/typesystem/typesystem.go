@@ -1788,7 +1788,7 @@ type IntersectionEdgeComparison struct {
 }
 
 // Need function to return the 1) lowest edges (if there are direct edges, all direct edges), 2) other edges that have path to sourceType
-// ([]*graph.WeightedAuthorizationModelEdge /* lowest weight edges*/, []*graph.WeightedAuthorizationModelEdge /* other edges*/, error)
+// ([]*graph.WeightedAuthorizationModelEdge /* lowest weight edges*/, []*graph.WeightedAuthorizationModelEdge /* other edges*/, error).
 func (t *TypeSystem) GetLowestEdgesAndTheirSiblingsForIntersection(
 	targetTypeRelation string,
 	sourceType string,
@@ -1846,6 +1846,8 @@ func (t *TypeSystem) GetLowestEdgesAndTheirSiblingsForIntersection(
 					}
 				}
 			}
+		default:
+			// TODO
 		}
 	}
 
@@ -1863,6 +1865,103 @@ func (t *TypeSystem) GetLowestEdgesAndTheirSiblingsForIntersection(
 		DirectEdges:               directEdges,
 		DirectEdgesAreLeastWeight: directEdgesAreLowest,
 	}, nil
+}
+
+func (t *TypeSystem) ConstructUserset(ctx context.Context, edgeType graph.EdgeType, uniqueLabel string) (*openfgav1.Userset, error) {
+	_, span := tracer.Start(ctx, "typesystem.ConstructUserset")
+	defer span.End()
+	wg := t.authzWeightedGraph
+
+	currentNode, ok := wg.GetNodeByID(uniqueLabel)
+	if !ok {
+		return nil, fmt.Errorf("could not find node with label: %s", uniqueLabel)
+	}
+
+	switch currentNode.GetNodeType() {
+	case graph.SpecificType, graph.SpecificTypeWildcard:
+		return This(), nil
+	case graph.SpecificTypeAndRelation:
+		switch edgeType {
+		case graph.DirectEdge:
+			// This is a userset
+			object, relation := tuple.SplitObjectRelation(uniqueLabel)
+			return &openfgav1.Userset{
+				Userset: &openfgav1.Userset_ComputedUserset{
+					ComputedUserset: &openfgav1.ObjectRelation{
+						Object:   object,
+						Relation: relation,
+					},
+				},
+			}, nil
+		case graph.RewriteEdge, graph.ComputedEdge:
+			_, relation := tuple.SplitObjectRelation(uniqueLabel)
+			return &openfgav1.Userset{
+				Userset: &openfgav1.Userset_ComputedUserset{
+					ComputedUserset: &openfgav1.ObjectRelation{
+						Relation: relation,
+					},
+				},
+			}, nil
+		case graph.TTUEdge:
+			parent, relation := tuple.SplitObjectRelation(uniqueLabel)
+			return &openfgav1.Userset{
+				Userset: &openfgav1.Userset_TupleToUserset{
+					TupleToUserset: &openfgav1.TupleToUserset{
+						Tupleset: &openfgav1.ObjectRelation{
+							Relation: parent,
+						},
+						ComputedUserset: &openfgav1.ObjectRelation{
+							Relation: relation,
+						},
+					},
+				},
+			}, nil
+		default:
+			return nil, fmt.Errorf("unknown edge type: %v for node: %s", edgeType, currentNode.GetUniqueLabel())
+		}
+
+	case graph.OperatorNode:
+		edges, ok := wg.GetEdgesFromNode(currentNode)
+		if !ok {
+			return nil, fmt.Errorf("no outgoing edges from node: %s", currentNode.GetUniqueLabel())
+		}
+		var usersets []*openfgav1.Userset
+		for _, edge := range edges {
+			currentUserset, err := t.ConstructUserset(ctx, edge.GetEdgeType(), edge.GetTo().GetUniqueLabel())
+			if err != nil {
+				return nil, fmt.Errorf("failed to construct userset for edge %s: %w", edge.GetTo().GetUniqueLabel(), err)
+			}
+			usersets = append(usersets, currentUserset)
+		}
+		switch currentNode.GetLabel() {
+		case graph.ExclusionOperator:
+			if len(usersets) != 2 {
+				return nil, fmt.Errorf("exclusion operator requires exactly two usersets, got %d", len(usersets))
+			}
+			return &openfgav1.Userset{
+				Userset: &openfgav1.Userset_Difference{
+					Difference: &openfgav1.Difference{
+						Base:     usersets[0],
+						Subtract: usersets[1],
+					}}}, nil
+		case graph.IntersectionOperator:
+			return &openfgav1.Userset{
+				Userset: &openfgav1.Userset_Intersection{
+					Intersection: &openfgav1.Usersets{
+						Child: usersets,
+					}}}, nil
+		case graph.UnionOperator:
+			return &openfgav1.Userset{
+				Userset: &openfgav1.Userset_Union{
+					Union: &openfgav1.Usersets{
+						Child: usersets,
+					}}}, nil
+		default:
+			return nil, fmt.Errorf("unknown operator node label: %s", currentNode.GetLabel())
+		}
+	default:
+		return nil, fmt.Errorf("unknown node type: %v", currentNode.GetNodeType())
+	}
 }
 
 func filterEdges(s []*graph.WeightedAuthorizationModelEdge, predicate func(edge *graph.WeightedAuthorizationModelEdge) bool) func(func(edge *graph.WeightedAuthorizationModelEdge) bool) {

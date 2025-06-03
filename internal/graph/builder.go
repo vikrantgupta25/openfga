@@ -112,7 +112,7 @@ func (c *CheckResolverOrderedBuilder) close() {
 	}
 }
 
-// LocalCheckResolver returns the local checker in the chain of CheckResolver
+// LocalCheckResolver returns the local checker in the chain of CheckResolver.
 func LocalCheckResolver(resolver CheckResolver) (*LocalChecker, bool) {
 	if resolver == nil {
 		return nil, false
