@@ -1780,6 +1780,44 @@ func (t *TypeSystem) GetEdgesFromWeightedGraph(
 	return relevantEdges, needsCheck, nil
 }
 
+func (t *TypeSystem) GetLowestWeightEdgeForExclusion(
+	targetTypeRelation string,
+	sourceType string,
+) ([]*graph.WeightedAuthorizationModelEdge, *graph.WeightedAuthorizationModelEdge, error) {
+	if t.authzWeightedGraph == nil {
+		return nil, nil, fmt.Errorf("weighted graph is nil")
+	}
+
+	wg := t.authzWeightedGraph
+
+	currentNode, ok := wg.GetNodeByID(targetTypeRelation)
+	if !ok {
+		return nil, nil, fmt.Errorf("could not find node with label: %s", targetTypeRelation)
+	}
+
+	// This means we cannot reach the source type requested, so there are no relevant edges.
+	if !hasPathTo(currentNode, sourceType) {
+		return nil, nil, nil
+	}
+
+	edges, ok := wg.GetEdgesFromNode(currentNode)
+	if !ok {
+		return nil, nil, fmt.Errorf("no outgoing edges from node: %s", currentNode.GetUniqueLabel())
+	}
+
+	if currentNode.GetNodeType() != graph.OperatorNode || currentNode.GetLabel() != graph.ExclusionOperator {
+		return nil, nil, fmt.Errorf("node is not an exclusion operator")
+	}
+	butNotEdge := edges[len(edges)-1] // this is the edge to 'b'
+	edges = edges[:len(edges)-1]
+	// Filter to only return edges which have a path to the sourceType
+	relevantEdges := slices.Collect(filterEdges(edges, func(edge *graph.WeightedAuthorizationModelEdge) bool {
+		return hasPathTo(edge, sourceType)
+	}))
+
+	return relevantEdges, butNotEdge, nil
+}
+
 type IntersectionEdgeComparison struct {
 	LowestEdge                *graph.WeightedAuthorizationModelEdge   // nil if direct is lowest, otherwise lowest edge
 	Siblings                  []*graph.WeightedAuthorizationModelEdge // all non lowest and excluding direct edges siblings

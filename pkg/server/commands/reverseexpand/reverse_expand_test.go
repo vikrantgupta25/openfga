@@ -604,106 +604,62 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 		expectedThrottlingValue int
 		expectedWasThrottled    bool
 	}{
+
 		{
-			name: "test",
+			name: "should_throttle",
 			model: `
+					model
+						schema 1.1
 
-model
-  schema 1.1
-type user1
-type user2
-type account
-  relations
-    define user_in_context: [user1, user1:*, user2]
-	define user2_in_context: [user1, user1:*, user2]
-type table
-  relations
-    define account: [account]
-    define tmp_user_in_context: user_in_context from account
-	define or_1: [user1]
-	define or_2: [user1]
-	define inner_and: [user1] and tmp_user_in_context
-    #define owner: [user1, user1:*, user2, account#user_in_context]  and tmp_user_in_context and user2_in_context from account
-	define owner: [user1, user1:*, user2, account#user_in_context] and ((or_1 and or_2) or inner_and) and user2_in_context from account
+					type user
 
-			`,
+					type folder
+						relations
+							define editor: [user]
+							define viewer: [user] or editor
+				`,
 			tuples: []string{
-				// "table:1#owner@user1:1",
-				"table:2#owner@user2:1",
-				"account:1#user_in_context@user1:1",
-				"account:1#user_in_context@user2:1",
-				"account:1#user2_in_context@user1:1",
-				"account:1#user2_in_context@user2:1",
-				"table:1#account@account:1",
-				"table:1#or_1@user1:1",
-				"table:1#or_2@user1:1",
-				// "table:2#account@account:1",
-				"table:1#owner@account:1#user_in_context",
+				"folder:C#editor@user:jon",
+				"folder:B#viewer@user:jon",
+				"folder:A#viewer@user:jon",
 			},
-			objectType:              "table",
-			relation:                "owner",
-			user:                    &UserRefObject{Object: &openfgav1.Object{Type: "user1", Id: "1"}},
+			objectType:              "folder",
+			relation:                "viewer",
+			user:                    &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "jon"}},
+			throttlingEnabled:       true,
+			expectedWasThrottled:    true,
+			expectedDispatchCount:   4,
+			expectedThrottlingValue: 1,
+		},
+		{
+			name: "should_not_throttle",
+			model: `
+					model
+						schema 1.1
+
+					type user
+
+					type folder
+						relations
+							define editor: [user]
+							define viewer: [user] or editor
+				`,
+			tuples: []string{
+				"folder:C#editor@user:jon",
+				"folder:B#viewer@user:jon",
+				"folder:A#viewer@user:jon",
+			},
+			objectType:              "folder",
+			relation:                "viewer",
+			user:                    &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "jon"}},
 			throttlingEnabled:       false,
 			expectedWasThrottled:    false,
 			expectedDispatchCount:   4,
 			expectedThrottlingValue: 0,
 		},
-		/*
-			{
-				name: "should_throttle",
-				model: `
-					model
-						schema 1.1
-
-					type user
-
-					type folder
-						relations
-							define editor: [user]
-							define viewer: [user] or editor
-				`,
-				tuples: []string{
-					"folder:C#editor@user:jon",
-					"folder:B#viewer@user:jon",
-					"folder:A#viewer@user:jon",
-				},
-				objectType:              "folder",
-				relation:                "viewer",
-				user:                    &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "jon"}},
-				throttlingEnabled:       true,
-				expectedWasThrottled:    true,
-				expectedDispatchCount:   4,
-				expectedThrottlingValue: 1,
-			},
-			{
-				name: "should_not_throttle",
-				model: `
-					model
-						schema 1.1
-
-					type user
-
-					type folder
-						relations
-							define editor: [user]
-							define viewer: [user] or editor
-				`,
-				tuples: []string{
-					"folder:C#editor@user:jon",
-					"folder:B#viewer@user:jon",
-					"folder:A#viewer@user:jon",
-				},
-				objectType:              "folder",
-				relation:                "viewer",
-				user:                    &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "jon"}},
-				throttlingEnabled:       false,
-				expectedWasThrottled:    false,
-				expectedDispatchCount:   4,
-				expectedThrottlingValue: 0,
-			},
-			{
-				name: "should_not_throttle_if_there_are_not_enough_dispatches",
-				model: `
+		{
+			name: "should_not_throttle_if_there_are_not_enough_dispatches",
+			model: `
 					model
 						schema 1.1
 
@@ -714,18 +670,17 @@ type table
 							define editor: [user]
 							define viewer: editor
 				`,
-				tuples: []string{
-					"document:1#editor@user:jon",
-				},
-				objectType:              "document",
-				relation:                "viewer",
-				user:                    &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "jon"}},
-				throttlingEnabled:       true,
-				expectedWasThrottled:    false,
-				expectedDispatchCount:   2,
-				expectedThrottlingValue: 0,
+			tuples: []string{
+				"document:1#editor@user:jon",
 			},
-		*/
+			objectType:              "document",
+			relation:                "viewer",
+			user:                    &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "jon"}},
+			throttlingEnabled:       true,
+			expectedWasThrottled:    false,
+			expectedDispatchCount:   2,
+			expectedThrottlingValue: 0,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -751,10 +706,9 @@ type table
 					ds,
 					typesys,
 					WithDispatchThrottlerConfig(threshold.Config{
-						Throttler: mockThrottler,
-						Enabled:   test.throttlingEnabled,
-						//			Threshold:    3,
-						Threshold:    20000,
+						Throttler:    mockThrottler,
+						Enabled:      test.throttlingEnabled,
+						Threshold:    3,
 						MaxThreshold: 0,
 					}),
 					WithCheckResolver(graph.NewLocalChecker()),
@@ -788,6 +742,392 @@ type table
 			}
 			require.Equal(t, test.expectedDispatchCount, resolutionMetadata.DispatchCounter.Load())
 			require.Equal(t, test.expectedWasThrottled, resolutionMetadata.WasThrottled.Load())
+		})
+	}
+}
+
+func TestReverseExpandIntersectionExclusion(t *testing.T) {
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+	tests := []struct {
+		name            string
+		model           string
+		tuples          []string
+		objectType      string
+		relation        string
+		user            *UserRefObject
+		expectedObjects []string
+	}{
+		{
+			name: "intersection_direct_assignment_lowest_weight_computed_ttu",
+			model: `
+model
+  schema 1.1
+type user1
+type user2
+type account
+  relations
+    define user_in_context: [user1, user1:*, user2]
+	define user2_in_context: [user1, user1:*, user2]
+type table
+  relations
+    define account: [account]
+    define tmp_user_in_context: user_in_context from account
+	define owner: [user1, user1:*, user2, account#user_in_context] and tmp_user_in_context and user2_in_context from account
+			`,
+			tuples: []string{
+				"table:2#owner@user2:1",
+				"table:3#owner@user1:1",
+				"account:1#user_in_context@user1:1",
+				"account:1#user_in_context@user2:1",
+				"account:1#user2_in_context@user1:1",
+				"account:1#user2_in_context@user2:1",
+				"account:2#user_in_context@user1:1",
+				"account:3#user_in_context@user1:*",
+				"account:3#user2_in_context@user1:*",
+				"table:1#account@account:1",
+				"table:2#account@account:2",
+				"table:3#account@account:3",
+				"table:1#owner@account:1#user_in_context",
+			},
+			objectType:      "table",
+			relation:        "owner",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user1", Id: "1"}},
+			expectedObjects: []string{"table:1", "table:3"},
+		},
+		{
+			name: "intersection_direct_assignment_lowest_weight_union",
+			model: `
+model
+  schema 1.1
+type user1
+type user2
+type account
+  relations
+    define user_in_context: [user1, user1:*, user2]
+	define user2_in_context: [user1, user1:*, user2]
+type table
+  relations
+    define account: [account]
+    define tmp_user_in_context: user_in_context from account
+	define or_1: [user1]
+	define or_2: [user1]
+	define inner_and: [user1] and tmp_user_in_context
+    define owner: [user1, user1:*, user2, account#user_in_context] and (or_1 or tmp_user_in_context) and user2_in_context from account
+			`,
+			tuples: []string{
+				// "table:1#owner@user1:1",
+				"table:2#owner@user2:1",
+				"table:3#owner@user1:1",
+				"account:1#user_in_context@user1:1",
+				"account:1#user_in_context@user2:1",
+				"account:1#user2_in_context@user1:1",
+				"account:1#user2_in_context@user2:1",
+				"table:1#account@account:1",
+				"table:1#or_1@user1:1",
+				"table:1#or_2@user1:1",
+				// "table:2#account@account:1",
+				"table:1#owner@account:1#user_in_context",
+			},
+			objectType:      "table",
+			relation:        "owner",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user1", Id: "1"}},
+			expectedObjects: []string{"table:1"},
+		},
+		{
+			name: "intersection_direct_assignment_lowest_weight_union_with_intersection",
+			model: `
+model
+  schema 1.1
+type user1
+type user2
+type account
+  relations
+    define user_in_context: [user1, user1:*, user2]
+	define user2_in_context: [user1, user1:*, user2]
+type table
+  relations
+    define account: [account]
+    define tmp_user_in_context: user_in_context from account
+	define or_1: [user1]
+	define or_2: [user1]
+	define inner_and: [user1] and tmp_user_in_context
+    define owner: [user1, user1:*, user2, account#user_in_context] and ((or_1 and or_2) or inner_and) and user2_in_context from account
+			`,
+			tuples: []string{
+				// "table:1#owner@user1:1",
+				"table:2#owner@user2:1",
+				"table:3#owner@user1:1",
+				"account:1#user_in_context@user1:1",
+				"account:1#user_in_context@user2:1",
+				"account:1#user2_in_context@user1:1",
+				"account:1#user2_in_context@user2:1",
+				"table:1#account@account:1",
+				"table:1#or_1@user1:1",
+				"table:1#or_2@user1:1",
+				// "table:2#account@account:1",
+				"table:1#owner@account:1#user_in_context",
+			},
+			objectType:      "table",
+			relation:        "owner",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user1", Id: "1"}},
+			expectedObjects: []string{"table:1"},
+		},
+		{
+			name: "intersection_direct_assignment_not_lowest_weight",
+			model: `
+model
+  schema 1.1
+type user1
+type user2
+type account
+  relations
+    define user_in_context: [user1, user1:*, user2]
+	define user2_in_context: [user1, user1:*, user2]
+type table
+  relations
+    define account: [account]
+    define tmp_user_in_context: user_in_context from account
+	define or_1: [user1]
+	define or_2: [user1]
+	define inner_and: [user1] and tmp_user_in_context
+    define owner: [user1, user1:*, user2, account#user_in_context] and (or_1 or or_2) and tmp_user_in_context and user2_in_context from account
+			`,
+			tuples: []string{
+				// "table:1#owner@user1:1",
+				"table:2#owner@user2:1",
+				"account:1#user_in_context@user1:1",
+				"account:1#user_in_context@user2:1",
+				"account:1#user2_in_context@user1:1",
+				"account:1#user2_in_context@user2:1",
+				"table:1#account@account:1",
+				"table:1#or_1@user1:1",
+				"table:3#or_1@user1:1",
+				"table:1#or_2@user1:1",
+				// "table:2#account@account:1",
+				"table:1#owner@account:1#user_in_context",
+			},
+			objectType:      "table",
+			relation:        "owner",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user1", Id: "1"}},
+			expectedObjects: []string{"table:1"},
+		},
+		{
+			name: "intersection_direct_assignment_not_lowest_weight",
+			model: `
+model
+  schema 1.1
+type user1
+type user2
+type account
+  relations
+    define user_in_context: [user1, user1:*, user2]
+	define user2_in_context: [user1, user1:*, user2]
+type table
+  relations
+    define account: [account]
+    define tmp_user_in_context: user_in_context from account
+	define or_1: [user1]
+	define or_2: [user1]
+	define inner_and: [user1] and tmp_user_in_context
+    define owner: [user1, user1:*, user2, account#user_in_context] and (or_1 or or_2) and tmp_user_in_context and user2_in_context from account
+			`,
+			tuples: []string{
+				// "table:1#owner@user1:1",
+				"table:2#owner@user2:1",
+				"account:1#user_in_context@user1:1",
+				"account:1#user_in_context@user2:1",
+				"account:1#user2_in_context@user1:1",
+				"account:1#user2_in_context@user2:1",
+				"table:1#account@account:1",
+				"table:1#or_1@user1:1",
+				"table:1#or_2@user1:1",
+				"table:3#or_1@user1:1",
+			},
+			objectType:      "table",
+			relation:        "owner",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user1", Id: "1"}},
+			expectedObjects: []string{},
+		},
+		{
+			name: "exclusion_simple_ttu",
+			model: `
+model
+  schema 1.1
+type user1
+type user2
+type account
+  relations
+    define user_in_context: [user1, user1:*, user2]
+type table
+  relations
+    define account: [account]
+	define owner: [user1, user1:*, user2, account#user_in_context] but not user_in_context from account
+			`,
+			tuples: []string{
+				"table:1#owner@user1:1",
+				"table:2#owner@user1:1",
+				"table:3#owner@user1:1",
+				"table:2#account@account:2",
+				"table:3#account@account:3",
+				"account:2#user_in_context@user1:1",
+				"account:3#user_in_context@user1:1",
+			},
+			objectType:      "table",
+			relation:        "owner",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user1", Id: "1"}},
+			expectedObjects: []string{"table:1"},
+		},
+		{
+			name: "exclusion_simple_computed_userset",
+			model: `
+model
+  schema 1.1
+type user1
+type user2
+type account
+  relations
+    define user_in_context: [user1, user1:*, user2]
+type table
+  relations
+    define account: [account]
+	define banned: [user1, user1:*, user2]
+	define owner: [user1, user1:*, user2, account#user_in_context] but not banned
+			`,
+			tuples: []string{
+				"table:1#owner@user1:1",
+				"table:2#owner@user1:1",
+				"table:3#owner@user1:1",
+				"table:2#account@account:2",
+				"table:3#account@account:3",
+				"account:2#user_in_context@user1:1",
+				"account:3#user_in_context@user1:1",
+				"table:2#banned@user1:1",
+				"table:3#banned@user1:*",
+			},
+			objectType:      "table",
+			relation:        "owner",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user1", Id: "1"}},
+			expectedObjects: []string{"table:1"},
+		},
+		{
+			name: "exclusion_simple_union",
+			model: `
+model
+  schema 1.1
+type user1
+type user2
+type account
+  relations
+    define user_in_context: [user1, user1:*, user2]
+type table
+  relations
+    define account: [account]
+	define banned_1: [user1]
+	define banned_2: [user1:*]
+	define owner: [user1, user1:*, user2, account#user_in_context] but not (banned_1 or banned_2)
+			`,
+			tuples: []string{
+				"table:1#owner@user1:1",
+				"table:2#owner@user1:1",
+				"table:3#owner@user1:1",
+				"table:2#account@account:2",
+				"table:3#account@account:3",
+				"account:2#user_in_context@user1:1",
+				"account:3#user_in_context@user1:1",
+				"table:2#banned_1@user1:1",
+				"table:3#banned_2@user1:*",
+			},
+			objectType:      "table",
+			relation:        "owner",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user1", Id: "1"}},
+			expectedObjects: []string{"table:1"},
+		},
+		{
+			name: "exclusion_complex_union_intersection",
+			model: `
+model
+  schema 1.1
+type user1
+type user2
+type account
+  relations
+    define user_in_context: [user1, user1:*, user2]
+type table
+  relations
+    define account: [account]
+	define banned_1: [user1]
+	define banned_2: [user1:*]
+	define banned_3: [user1, user1:*]
+	define owner: [user1, user1:*, user2, account#user_in_context] but not ((banned_1 or banned_2) and banned_3)
+			`,
+			tuples: []string{
+				"table:1#owner@user1:1",
+				"table:2#owner@user1:1",
+				"table:3#owner@user1:1",
+				"table:2#account@account:2",
+				"table:3#account@account:3",
+				"account:2#user_in_context@user1:1",
+				"account:3#user_in_context@user1:1",
+				"table:2#banned_1@user1:1",
+				"table:3#banned_2@user1:*",
+				"table:2#banned_3@user1:*",
+			},
+			objectType:      "table",
+			relation:        "owner",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user1", Id: "1"}},
+			expectedObjects: []string{"table:1", "table:3"},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			storeID, model := storagetest.BootstrapFGAStore(t, ds, test.model, test.tuples)
+			resultChan := make(chan *ReverseExpandResult)
+			errChan := make(chan error, 1)
+			typesys, err := typesystem.NewAndValidate(
+				context.Background(),
+				model,
+			)
+			require.NoError(t, err)
+			ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
+			ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+			resolutionMetadata := NewResolutionMetadata()
+			go func() {
+				q := NewReverseExpandQuery(
+					ds,
+					typesys,
+					WithCheckResolver(graph.NewLocalChecker(graph.WithOptimizations(true))),
+				)
+
+				err = q.Execute(ctx, &ReverseExpandRequest{
+					StoreID:    storeID,
+					ObjectType: test.objectType,
+					Relation:   test.relation,
+					User:       test.user,
+				}, resultChan, resolutionMetadata)
+
+				if err != nil {
+					errChan <- err
+				}
+			}()
+
+			var results []string
+		ConsumerLoop:
+			for {
+				select {
+				case result, open := <-resultChan:
+					if !open {
+						break ConsumerLoop
+					}
+					results = append(results, result.Object)
+				case err := <-errChan:
+					require.FailNowf(t, "unexpected error received on error channel :%v", err.Error())
+					break ConsumerLoop
+				case <-ctx.Done():
+					break ConsumerLoop
+				}
+			}
+			require.ElementsMatch(t, test.expectedObjects, results)
 		})
 	}
 }

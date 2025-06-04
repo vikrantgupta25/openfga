@@ -281,13 +281,10 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 		}
 
 	*/
-	g := graph.New(c.typesystem)
 
-	log.Println("g", g)
-
-	// do some handwaving here and assume that we have "table:1" returned
+	// do some handwaving here and assume that we have table:1/2/3 returned
 	// construction of check request
-	leftHandObjects := []string{"table:1", "table:2"}
+	leftHandObjects := []string{"table:1", "table:2", "table:3"}
 	for _, leftHandObject := range leftHandObjects {
 		tmpResultChan <- &ReverseExpandResult{
 			Object:       leftHandObject,
@@ -334,6 +331,68 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 
 	// This is a placeholder for handling intersections.
 	// The actual implementation will depend on the specific requirements of the intersection logic.
+	return nil
+}
+
+func (c *ReverseExpandQuery) exclusionHandler(ctx context.Context,
+	req *ReverseExpandRequest,
+	resultChan chan<- *ReverseExpandResult,
+	uniqueLabel string,
+	sourceUserType string,
+	_ *ResolutionMetadata) error {
+	leftHand, rightHand, err := c.typesystem.GetLowestWeightEdgeForExclusion(uniqueLabel, sourceUserType)
+	if err != nil {
+		return fmt.Errorf("get lowest weight edge for exclusion: %w", err)
+	}
+	fmt.Println("leftHand", leftHand)
+	tmpResultChan := make(chan *ReverseExpandResult, 100)
+	/*
+		var leftHand []*languagegraph.WeightedAuthorizationModelEdge
+		if intersectionEdgeComparison.DirectEdgesAreLeastWeight {
+			leftHand = intersectionEdgeComparison.DirectEdges
+		} else {
+			leftHand = []*languagegraph.WeightedAuthorizationModelEdge{intersectionEdgeComparison.LowestEdge}
+		}
+
+	*/
+
+	// do some handwaving here and assume that we have table:1/2/3 returned
+	// construction of check request
+	leftHandObjects := []string{"table:1", "table:2", "table:3"}
+	for _, leftHandObject := range leftHandObjects {
+		tmpResultChan <- &ReverseExpandResult{
+			Object:       leftHandObject,
+			ResultStatus: RequiresFurtherEvalStatus,
+		}
+	}
+	close(tmpResultChan)
+	userset, err := c.typesystem.ConstructUserset(ctx, rightHand.GetEdgeType(), rightHand.GetTo().GetUniqueLabel())
+	if err != nil {
+		return fmt.Errorf("construct userset: %w", err)
+	}
+	for tmpResult := range tmpResultChan {
+		handlerFunc := c.localCheckResolver.CheckRewrite(ctx,
+			&graph.ResolveCheckRequest{
+				StoreID:              req.StoreID,
+				AuthorizationModelID: c.typesystem.GetAuthorizationModelID(),
+				TupleKey:             tuple.NewTupleKey(tmpResult.Object, req.Relation, req.User.String()),
+				ContextualTuples:     req.ContextualTuples,
+				Context:              req.Context,
+				Consistency:          req.Consistency,
+				RequestMetadata:      &graph.ResolveCheckRequestMetadata{},
+			}, userset)
+		tmpCheckResult, err := handlerFunc(ctx)
+		if err != nil {
+			return fmt.Errorf("check set operation: %w", err)
+		}
+		if !tmpCheckResult.GetAllowed() {
+			resultChan <- &ReverseExpandResult{
+				Object:       tmpResult.Object,
+				ResultStatus: NoFurtherEvalStatus,
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -428,7 +487,8 @@ func (c *ReverseExpandQuery) execute(
 			zap.String("fromLabel", newEdge.GetFrom().GetUniqueLabel()),
 			zap.String("toLabel", newEdge.GetTo().GetUniqueLabel()),
 			zap.String("edgeType", newEdge.GetTo().GetLabel()))
-		if newEdge.GetTo().GetLabel() == "intersection" {
+		switch newEdge.GetTo().GetLabel() /*== "intersection"*/ {
+		case "intersection":
 			// we will then need to get the lowest edge from there
 			// Need to get:
 			// 1. the lowest weight edge + all direct edges - ensure that the weight has the type
@@ -446,6 +506,8 @@ func (c *ReverseExpandQuery) execute(
 				return err
 			}
 			return nil
+		case "exclusion":
+			return c.exclusionHandler(ctx, req, resultChan, newEdge.GetTo().GetUniqueLabel(), sourceUserType, resolutionMetadata)
 		}
 	}
 
