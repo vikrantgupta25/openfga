@@ -149,13 +149,25 @@ func (c *ReverseExpandQuery) readTuplesAndExecuteWeighted(
 	ctx, span := tracer.Start(ctx, "readTuplesAndExecuteWeighted")
 	defer span.End()
 
-	userFilter, relationFilter := c.buildQueryFiltersWeighted(req)
+	userFilter, relationFilter, objectType := c.buildQueryFiltersWeighted(req)
 
+	// TODO: I think we need to determine the object type in the filters function as well, based on edge type
+	// TTUS behave differently from others
+	fmt.Printf("JUSTIN Weighted\n"+
+		"\trelationFilter: %s\n"+
+		"\tuserFilter: %s\n"+
+		"\tObject type: %s\n"+
+		"\tEdgeType: %d\n",
+		relationFilter,
+		userFilter,
+		getTypeFromLabel(req.weightedEdge.GetFrom().GetLabel()),
+		req.weightedEdge.GetEdgeType(),
+	)
 	// find all tuples of the form req.edge.TargetReference.Type:...#relationFilter@userFilter
 	iter, err := c.datastore.ReadStartingWithUser(ctx, req.StoreID, storage.ReadStartingWithUserFilter{
-		ObjectType: getTypeFromLabel(req.weightedEdge.GetFrom().GetLabel()), // e.g. directs-employee
-		Relation:   relationFilter,                                          // other-rel
-		UserFilter: userFilter,                                              // .Object = employee#alg_combined_1
+		ObjectType: objectType,     // e.g. directs-employee
+		Relation:   relationFilter, // other-rel
+		UserFilter: userFilter,     // .Object = employee#alg_combined_1
 	}, storage.ReadStartingWithUserOptions{
 		Consistency: storage.ConsistencyOptions{
 			Preference: req.Consistency,
@@ -207,6 +219,7 @@ LoopOnIterator:
 		}
 
 		foundObject := tk.GetObject()
+		fmt.Printf("JUSTIN FOUND OBJECT WEIGHTED: %s", foundObject)
 		var newRelation string
 
 		switch req.weightedEdge.GetEdgeType() {
@@ -215,9 +228,9 @@ LoopOnIterator:
 			errs = errors.Join(errs, err)
 
 			continue
-
 		case weightedGraph.TTUEdge:
-			newRelation = req.weightedEdge.GetTo().GetLabel() // TODO: future branch
+			// TODO: what's the right behavior here
+			newRelation = req.weightedEdge.GetTo().GetLabel()
 		default:
 			panic("unsupported edge type")
 		}
@@ -257,16 +270,17 @@ LoopOnIterator:
 
 func (c *ReverseExpandQuery) buildQueryFiltersWeighted(
 	req *ReverseExpandRequest,
-) ([]*openfgav1.ObjectRelation, string) {
+) ([]*openfgav1.ObjectRelation, string, string) {
 	var userFilter []*openfgav1.ObjectRelation
-	var relationFilter string
+	var relationFilter, objectType string
 
 	// Should this actually be looking at the node we're heading towards?
 	switch req.weightedEdge.GetEdgeType() {
 	case weightedGraph.DirectEdge:
 		// the .From() for a direct edge will have a type#rel e.g. directs-employee#other_rel
 		fromLabel := req.weightedEdge.GetFrom().GetLabel()
-		relationFilter = tuple.GetRelation(fromLabel) // directs-employee#other_rel -> other_rel
+		relationFilter = tuple.GetRelation(fromLabel)                        // directs-employee#other_rel -> other_rel
+		objectType = getTypeFromLabel(req.weightedEdge.GetFrom().GetLabel()) // e.g. directs-employee
 
 		toNode := req.weightedEdge.GetTo()
 
@@ -297,7 +311,8 @@ func (c *ReverseExpandQuery) buildQueryFiltersWeighted(
 			}
 		}
 	case weightedGraph.TTUEdge:
-		relationFilter = req.edge.TuplesetRelation // This needs to be updated
+		//relationFilter = tuple.GetRelation(req.weightedEdge.GetTuplesetRelation())
+		relationFilter = tuple.GetRelation(req.weightedEdge.GetTo().GetLabel())
 		// a TTU edge can only have a userset as a source node
 		// e.g. 'group:eng#member'
 		if val, ok := req.User.(*UserRefObjectRelation); ok {
@@ -311,7 +326,7 @@ func (c *ReverseExpandQuery) buildQueryFiltersWeighted(
 		panic("unsupported edge type")
 	}
 
-	return userFilter, relationFilter
+	return userFilter, relationFilter, objectType
 }
 
 // expects a "type#rel".
