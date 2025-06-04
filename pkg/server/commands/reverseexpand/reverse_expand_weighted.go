@@ -160,14 +160,14 @@ func (c *ReverseExpandQuery) readTuplesAndExecuteWeighted(
 		"\tEdgeType: %d\n",
 		relationFilter,
 		userFilter,
-		getTypeFromLabel(req.weightedEdge.GetFrom().GetLabel()),
+		objectType,
 		req.weightedEdge.GetEdgeType(),
 	)
-	// find all tuples of the form req.edge.TargetReference.Type:...#relationFilter@userFilter
+
 	iter, err := c.datastore.ReadStartingWithUser(ctx, req.StoreID, storage.ReadStartingWithUserFilter{
 		ObjectType: objectType,     // e.g. directs-employee
 		Relation:   relationFilter, // other-rel
-		UserFilter: userFilter,     // .Object = employee#alg_combined_1
+		UserFilter: userFilter,
 	}, storage.ReadStartingWithUserOptions{
 		Consistency: storage.ConsistencyOptions{
 			Preference: req.Consistency,
@@ -219,23 +219,30 @@ LoopOnIterator:
 		}
 
 		foundObject := tk.GetObject()
-		fmt.Printf("JUSTIN FOUND OBJECT WEIGHTED: %s", foundObject)
+		fmt.Printf("JUSTIN FOUND OBJECT WEIGHTED: %s\n", foundObject)
 		var newRelation string
 
 		switch req.weightedEdge.GetEdgeType() {
 		case weightedGraph.DirectEdge:
-			err := c.trySendCandidate(ctx, intersectionOrExclusionInPreviousEdges, foundObject, resultChan)
+			err = c.trySendCandidate(ctx, intersectionOrExclusionInPreviousEdges, foundObject, resultChan)
 			errs = errors.Join(errs, err)
-
 			continue
 		case weightedGraph.TTUEdge:
-			// TODO: what's the right behavior here
-			newRelation = req.weightedEdge.GetTo().GetLabel()
+			// TODO: what's the right behavior here?
+			//newRelation = req.weightedEdge.GetTo().GetLabel()
+
+			// so now we need to see if this object has the requisite relation to the parent
+			// e.g. we found 'directs:ttu_alg_2', so check if IT has a direct_parent relation to any TTUs
+			// what about multiple nested TTUs tho, or a TTU that resolves to a userset
+			newRelation = tuple.GetRelation(req.weightedEdge.GetTuplesetRelation())
+
 		default:
 			panic("unsupported edge type")
 		}
 
-		// Do we still need this additional dispatch?
+		fmt.Printf("Dispatching after TTU\n \tRelation: %s\n\tObject %s\n", newRelation, foundObject)
+		// TODO after lunch: you need this to be the direct edge from ttus -> direct parent
+		// Stick the WG back on the window and find out how to get it
 		pool.Go(func(ctx context.Context) error {
 			return c.dispatch(ctx, &ReverseExpandRequest{
 				StoreID:    req.StoreID,
@@ -252,7 +259,7 @@ LoopOnIterator:
 				Context:          req.Context,
 				edge:             req.edge,
 				Consistency:      req.Consistency,
-				// TODO : verify this
+				// TODO: what edge do i give it tho
 				weightedEdge:        req.weightedEdge,
 				weightedEdgeTypeRel: req.weightedEdgeTypeRel,
 			}, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
@@ -313,6 +320,7 @@ func (c *ReverseExpandQuery) buildQueryFiltersWeighted(
 	case weightedGraph.TTUEdge:
 		//relationFilter = tuple.GetRelation(req.weightedEdge.GetTuplesetRelation())
 		relationFilter = tuple.GetRelation(req.weightedEdge.GetTo().GetLabel())
+		objectType = getTypeFromLabel(req.weightedEdge.GetTo().GetLabel())
 		// a TTU edge can only have a userset as a source node
 		// e.g. 'group:eng#member'
 		if val, ok := req.User.(*UserRefObjectRelation); ok {
