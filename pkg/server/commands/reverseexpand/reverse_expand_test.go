@@ -950,6 +950,28 @@ type table
 			expectedObjects: []string{},
 		},
 		{
+			name: "intersection_has_no_direct_assignment",
+			model: `
+model
+  schema 1.1
+type user1
+type table
+  relations
+    define and_1: [user1]
+	define and_2: [user1]
+	define owner: and_1 and and_2
+			`,
+			tuples: []string{
+				"table:1#and_1@user1:1",
+				"table:1#and_2@user1:1",
+				"table:2#and_1@user1:1",
+			},
+			objectType:      "table",
+			relation:        "owner",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user1", Id: "1"}},
+			expectedObjects: []string{"table:1"},
+		},
+		{
 			name: "exclusion_simple_ttu",
 			model: `
 model

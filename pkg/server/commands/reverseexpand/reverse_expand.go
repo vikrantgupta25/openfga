@@ -294,7 +294,7 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 	close(tmpResultChan)
 	siblings := intersectionEdgeComparison.Siblings
 	usersets := make([]*openfgav1.Userset, 0, len(siblings)+1)
-	if !intersectionEdgeComparison.DirectEdgesAreLeastWeight {
+	if !intersectionEdgeComparison.DirectEdgesAreLeastWeight && len(intersectionEdgeComparison.DirectEdges) > 0 {
 		usersets = append(usersets, typesystem.This())
 	}
 
