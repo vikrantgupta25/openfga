@@ -1100,6 +1100,40 @@ type table
 			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user1", Id: "1"}},
 			expectedObjects: []string{"table:1", "table:3"},
 		},
+		{
+			name: "exclusion_complex_exclusion",
+			model: `
+model
+  schema 1.1
+type user1
+type user2
+type account
+  relations
+    define user_in_context: [user1, user1:*, user2]
+type table
+  relations
+    define account: [account]
+	define banned_1: [user1]
+	define allowed: [user1:*]
+	define owner: [user1, user1:*, user2, account#user_in_context] but not (banned_1 but not allowed)
+			`,
+			tuples: []string{
+				"table:1#owner@user1:1",
+				"table:2#owner@user1:1",
+				"table:3#owner@user1:1",
+				"table:2#account@account:2",
+				"table:3#account@account:3",
+				"account:2#user_in_context@user1:1",
+				"account:3#user_in_context@user1:1",
+				"table:2#banned_1@user1:1",
+				"table:3#banned_1@user1:1",
+				"table:2#allowed@user1:*",
+			},
+			objectType:      "table",
+			relation:        "owner",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user1", Id: "1"}},
+			expectedObjects: []string{"table:1", "table:2"},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
