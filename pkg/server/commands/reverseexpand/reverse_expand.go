@@ -377,7 +377,7 @@ func (c *ReverseExpandQuery) execute(
 		return err
 	}
 
-	pool := concurrency.NewPool(ctx, 1)
+	pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
 
 	var errs error
 
