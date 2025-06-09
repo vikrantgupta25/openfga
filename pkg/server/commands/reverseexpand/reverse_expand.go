@@ -47,6 +47,7 @@ type ReverseExpandRequest struct {
 
 	weightedEdge        *weightedGraph.WeightedAuthorizationModelEdge
 	weightedEdgeTypeRel string
+	stack               relationStack
 }
 
 type IsUserRef interface {
@@ -341,6 +342,9 @@ func (c *ReverseExpandQuery) execute(
 
 		if targetTypeRel == "" { // This is true on the first call of reverse expand
 			targetTypeRel = tuple.ToObjectRelationString(targetObjRef.GetType(), targetObjRef.GetRelation())
+
+			// The relation stack has to be initialized on the first request
+			req.stack.Push(targetTypeRel)
 		}
 
 		edges, needsCheck, err := c.typesystem.GetEdgesFromWeightedGraph(
@@ -373,10 +377,11 @@ func (c *ReverseExpandQuery) execute(
 		return err
 	}
 
-	pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
+	pool := concurrency.NewPool(ctx, 1)
 
 	var errs error
 
+	fmt.Println("LOOP")
 LoopOnEdges:
 	for _, edge := range edges {
 		innerLoopEdge := edge
@@ -410,6 +415,7 @@ LoopOnEdges:
 				break LoopOnEdges
 			}
 		case graph.TupleToUsersetEdge:
+			//fmt.Printf("JUSTIN ORIGINAL DISPATCHING FROM TTU EDGE\n")
 			pool.Go(func(ctx context.Context) error {
 				return c.reverseExpandTupleToUserset(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			})
@@ -562,9 +568,9 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 
 	// find all tuples of the form req.edge.TargetReference.Type:...#relationFilter@userFilter
 	iter, err := c.datastore.ReadStartingWithUser(ctx, req.StoreID, storage.ReadStartingWithUserFilter{
-		ObjectType: req.edge.TargetReference.GetType(), // directs-employee
-		Relation:   relationFilter,                     // other-rel
-		UserFilter: userFilter,                         // .Object = employee#alg_combined_1
+		ObjectType: req.edge.TargetReference.GetType(),
+		Relation:   relationFilter,
+		UserFilter: userFilter,
 	}, storage.ReadStartingWithUserOptions{
 		Consistency: storage.ConsistencyOptions{
 			Preference: req.Consistency,

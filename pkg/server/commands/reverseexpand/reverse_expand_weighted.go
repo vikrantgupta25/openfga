@@ -4,12 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/condition"
@@ -20,6 +18,25 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
+// This might be better-implemented with pointers for memory's sake
+type relationStack []string
+
+func (r *relationStack) Push(value string) {
+	*r = append(*r, value)
+}
+
+func (r *relationStack) Pop() string {
+	element := (*r)[len(*r)-1]
+	*r = (*r)[0 : len(*r)-1]
+	return element
+}
+
+func (r *relationStack) Copy() []string {
+	dst := make(relationStack, len(*r)) // Create a new slice with the same length
+	copy(dst, *r)
+	return dst
+}
+
 func (c *ReverseExpandQuery) loopOverWeightedEdges(
 	ctx context.Context,
 	edges []*weightedGraph.WeightedAuthorizationModelEdge,
@@ -29,7 +46,7 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 	resultChan chan<- *ReverseExpandResult,
 	sourceUserObj string,
 ) error {
-	pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
+	pool := concurrency.NewPool(ctx, 1)
 
 	var errs error
 
@@ -46,22 +63,20 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 			weightedEdge:        edge,
 			weightedEdgeTypeRel: edge.GetTo().GetUniqueLabel(),
 			edge:                req.edge,
+			stack:               req.stack.Copy(),
 		}
 		switch edge.GetEdgeType() {
 		case weightedGraph.DirectEdge:
+			// Now kick off queries for tuples based on the stack of relations we have built to get to this leaf
 			pool.Go(func(ctx context.Context) error {
-				return c.reverseExpandDirectWeighted(ctx, r, resultChan, needsCheck, resolutionMetadata)
+				return c.queryForTuples(ctx, r, "placeholder", "placeholder")
 			})
 		case weightedGraph.ComputedEdge:
-			toLabel := edge.GetTo().GetUniqueLabel()
-
-			// turn "document#viewer" into "viewer"
-			rel := tuple.GetRelation(toLabel)
-			r.User = &UserRefObjectRelation{
-				ObjectRelation: &openfgav1.ObjectRelation{
-					Object:   sourceUserObj,
-					Relation: rel,
-				},
+			// TODO: removed logic in here that transformed the usersets to trigger bail out case
+			// and prevent infinite loops. need to rebuild that loop prevention with weighted graph data.
+			if edge.GetTo().GetNodeType() != weightedGraph.OperatorNode {
+				_ = r.stack.Pop()
+				r.stack.Push(edge.GetTo().GetUniqueLabel())
 			}
 
 			err := c.dispatch(ctx, r, resultChan, needsCheck, resolutionMetadata)
@@ -69,11 +84,16 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 				errs = errors.Join(errs, err)
 				return errs
 			}
-		case weightedGraph.TTUEdge:
+		case weightedGraph.TTUEdge: // This is not handled yet
 			pool.Go(func(ctx context.Context) error {
 				return c.reverseExpandTupleToUsersetWeighted(ctx, r, resultChan, needsCheck, resolutionMetadata)
 			})
 		case weightedGraph.RewriteEdge:
+			// bc operator nodes are not real types
+			if edge.GetTo().GetNodeType() != weightedGraph.OperatorNode {
+				_ = r.stack.Pop()
+				r.stack.Push(edge.GetTo().GetUniqueLabel())
+			}
 			err := c.dispatch(ctx, r, resultChan, needsCheck, resolutionMetadata)
 			if err != nil {
 				errs = errors.Join(errs, err)
@@ -85,6 +105,33 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 	}
 
 	return errors.Join(errs, pool.Wait())
+}
+
+func (c *ReverseExpandQuery) queryForTuples(
+	ctx context.Context,
+	req *ReverseExpandRequest,
+	objectType string,
+	objectId string,
+) error {
+	// This method should be recursive, and handle all tuple querying and also emitting
+	// to channel when it hits the base case.
+	// to make this more usable it might be better to directly pass in the needed params, rather than
+	// copying the whole ReverseExpandRequest like we do everywhere else
+
+	rel := req.stack.Pop()
+	to := req.weightedEdge.GetTo().GetUniqueLabel()
+	var userId string
+	if val, ok := req.User.(*UserRefObject); ok {
+		userId = val.Object.GetId()
+	}
+	fmt.Printf("JUSTIN new method would have queried for:"+
+		"\n\tRelation: %s"+
+		"\n\tTo: %s"+
+		"\n\tuserId: %s\n",
+		rel, to, userId,
+	)
+
+	return nil
 }
 
 func (c *ReverseExpandQuery) reverseExpandDirectWeighted(
@@ -106,7 +153,6 @@ func (c *ReverseExpandQuery) reverseExpandDirectWeighted(
 		span.End()
 	}()
 
-	// Do we want to separate buildQueryFilters more, and feed it in below?
 	err = c.readTuplesAndExecuteWeighted(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 	return err
 }
@@ -219,7 +265,6 @@ LoopOnIterator:
 		}
 
 		foundObject := tk.GetObject()
-		fmt.Printf("JUSTIN FOUND OBJECT WEIGHTED: %s\n", foundObject)
 		var newRelation string
 
 		switch req.weightedEdge.GetEdgeType() {
@@ -240,7 +285,6 @@ LoopOnIterator:
 			panic("unsupported edge type")
 		}
 
-		fmt.Printf("Dispatching after TTU\n \tRelation: %s\n\tObject %s\n", newRelation, foundObject)
 		// TODO after lunch: you need this to be the direct edge from ttus -> direct parent
 		// Stick the WG back on the window and find out how to get it
 		pool.Go(func(ctx context.Context) error {
