@@ -188,6 +188,10 @@ LoopOnIterator:
 			continue
 		} else {
 			// trigger query for tuples all over again
+			c.queryForTuples(ctx, req, needsCheck, resultChan)
+			// queryForTuples()
+			// new object we just found
+			// stack with 1 less element
 		}
 	}
 

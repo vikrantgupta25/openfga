@@ -929,30 +929,30 @@ func TestReverseExpandNew(t *testing.T) {
 		user            *UserRefObject
 		expectedObjects []string
 	}{
-		//	{
-		//		name: "simple_ttu",
-		//		model: `model
-		//		  schema 1.1
-		//
-		//		type organization
-		//		  relations
-		//			define member: [user]
-		//			define repo_admin: [user, organization#member]
-		//		type repo
-		//		  relations
-		//			define admin: repo_admin from owner
-		//			define owner: [organization]
-		//		type user
-		//`,
-		//		tuples: []string{
-		//			"repo:fga#owner@organization:jz",
-		//			"organization:jz#repo_admin@user:justin",
-		//		},
-		//		objectType:      "repo",
-		//		relation:        "admin",
-		//		user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
-		//		expectedObjects: []string{"repo:fga"},
-		//	},
+		{
+			name: "simple_ttu",
+			model: `model
+				  schema 1.1
+		
+				type organization
+				  relations
+					define member: [user]
+					define repo_admin: [user, organization#member]
+				type repo
+				  relations
+					define admin: repo_admin from owner
+					define owner: [organization]
+				type user
+		`,
+			tuples: []string{
+				"repo:fga#owner@organization:jz",
+				"organization:jz#repo_admin@user:justin",
+			},
+			objectType:      "repo",
+			relation:        "admin",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+			expectedObjects: []string{"repo:fga"},
+		},
 		//	{
 		//		name: "ttu_from_union",
 		//		model: `model
@@ -1010,30 +1010,30 @@ func TestReverseExpandNew(t *testing.T) {
 		//		user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
 		//		expectedObjects: []string{"repo:fga"},
 		//	},
-		{
-			name: "direct_and_algebraic",
-			model: `model
-			  schema 1.1
-			
-			type user
-			type repo
-			  relations
-				define member: [user]
-				define member_wild: [user:*]
-				define computed_member: member
-				define owner: [user]
-				define admin: [user] or computed_member
-				define or_admin: owner or admin
-		`,
-			tuples: []string{
-				"repo:fga#member@user:justin",
-				"repo:fga#owner@user:z",
-			},
-			objectType:      "repo",
-			relation:        "or_admin",
-			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
-			expectedObjects: []string{"repo:fga"},
-		},
+		//{
+		//	name: "direct_and_algebraic",
+		//	model: `model
+		//	  schema 1.1
+		//
+		//	type user
+		//	type repo
+		//	  relations
+		//		define member: [user]
+		//		define member_wild: [user:*]
+		//		define computed_member: member
+		//		define owner: [user]
+		//		define admin: [user] or computed_member
+		//		define or_admin: owner or admin
+		//`,
+		//	tuples: []string{
+		//		"repo:fga#member@user:justin",
+		//		"repo:fga#owner@user:z",
+		//	},
+		//	objectType:      "repo",
+		//	relation:        "or_admin",
+		//	user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+		//	expectedObjects: []string{"repo:fga"},
+		//},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
