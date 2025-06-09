@@ -323,7 +323,8 @@ func (q *ListObjectsQuery) evaluate(
 			reverseexpand.WithDispatchThrottlerConfig(q.dispatchThrottlerConfig),
 			reverseexpand.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
 			reverseexpand.WithLogger(q.logger),
-			reverseexpand.WithListObjectOptimizationsEnabled(q.listObjectOptimizationsEnabled),
+			//reverseexpand.WithListObjectOptimizationsEnabled(q.listObjectOptimizationsEnabled),
+			reverseexpand.WithListObjectOptimizationsEnabled(true),
 		)
 
 		reverseExpandDoneWithError := make(chan struct{}, 1)

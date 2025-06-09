@@ -381,7 +381,6 @@ func (c *ReverseExpandQuery) execute(
 
 	var errs error
 
-	fmt.Println("LOOP")
 LoopOnEdges:
 	for _, edge := range edges {
 		innerLoopEdge := edge

@@ -1019,6 +1019,7 @@ func TestReverseExpandNew(t *testing.T) {
 			type repo
 			  relations
 				define member: [user]
+				define member_wild: [user:*]
 				define computed_member: member
 				define owner: [user]
 				define admin: [user] or computed_member

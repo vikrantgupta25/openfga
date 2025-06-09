@@ -37,6 +37,10 @@ func (r *relationStack) Copy() []string {
 	return dst
 }
 
+func (r *relationStack) Len() int {
+	return len(*r)
+}
+
 func (c *ReverseExpandQuery) loopOverWeightedEdges(
 	ctx context.Context,
 	edges []*weightedGraph.WeightedAuthorizationModelEdge,
@@ -69,7 +73,12 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 		case weightedGraph.DirectEdge:
 			// Now kick off queries for tuples based on the stack of relations we have built to get to this leaf
 			pool.Go(func(ctx context.Context) error {
-				return c.queryForTuples(ctx, r, "placeholder", "placeholder")
+				return c.queryForTuples(
+					ctx,
+					r,
+					needsCheck,
+					resultChan, // can we put this on the ReverseExpandQuery itself?
+				)
 			})
 		case weightedGraph.ComputedEdge:
 			// TODO: removed logic in here that transformed the usersets to trigger bail out case
@@ -110,30 +119,90 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 func (c *ReverseExpandQuery) queryForTuples(
 	ctx context.Context,
 	req *ReverseExpandRequest,
-	objectType string,
-	objectId string,
+	needsCheck bool,
+	resultChan chan<- *ReverseExpandResult,
 ) error {
 	// This method should be recursive, and handle all tuple querying and also emitting
 	// to channel when it hits the base case.
 	// to make this more usable it might be better to directly pass in the needed params, rather than
 	// copying the whole ReverseExpandRequest like we do everywhere else
 
-	rel := req.stack.Pop()
+	typeRel := req.stack.Pop()
 	to := req.weightedEdge.GetTo().GetUniqueLabel()
 	var userId string
 	if val, ok := req.User.(*UserRefObject); ok {
 		userId = val.Object.GetId()
 	}
-	fmt.Printf("JUSTIN new method would have queried for:"+
-		"\n\tRelation: %s"+
-		"\n\tTo: %s"+
-		"\n\tuserId: %s\n",
-		rel, to, userId,
+	//fmt.Printf("JUSTIN new method would have queried for:"+
+	//	"\n\ttype#rel: %s"+
+	//	"\n\tTo: %s"+
+	//	"\n\tuserId: %s\n",
+	//	typeRel, to, userId,
+	//)
+
+	// build iterator
+	// loop over iterator
+	//   for each result
+	//      if stack is empty: send to result channel and return
+	//      if stack not empty: copy the stack and call this method again with the new result as the object
+	//c.buildFiltersV2(req)
+
+	// TODO: temporary for the simple case here
+	userFilter := []*openfgav1.ObjectRelation{{Object: tuple.BuildObject(to, userId)}}
+
+	objectType, relation := tuple.SplitObjectRelation(typeRel)
+	iter, err := c.datastore.ReadStartingWithUser(ctx, req.StoreID, storage.ReadStartingWithUserFilter{
+		ObjectType: objectType,
+		Relation:   relation,
+		UserFilter: userFilter,
+	}, storage.ReadStartingWithUserOptions{
+		Consistency: storage.ConsistencyOptions{
+			Preference: req.Consistency,
+		},
+	})
+	if err != nil {
+		return err
+	}
+
+	// filter out invalid tuples yielded by the database iterator
+	filteredIter := storage.NewFilteredTupleKeyIterator(
+		storage.NewTupleKeyIteratorFromTupleIterator(iter),
+		validation.FilterInvalidTuples(c.typesystem),
 	)
+	defer filteredIter.Stop()
+
+LoopOnIterator:
+	for {
+		tk, err := filteredIter.Next(ctx)
+		if err != nil {
+			if errors.Is(err, storage.ErrIteratorDone) {
+				break
+			}
+			//errs = errors.Join(errs, err)
+			break LoopOnIterator
+		}
+
+		fmt.Printf("JUSTIN TK FOUND: %s\n", tk.String())
+		if req.stack.Len() == 0 {
+			_ = c.trySendCandidate(ctx, needsCheck, tk.GetObject(), resultChan)
+			continue
+		} else {
+			// trigger query for tuples all over again
+		}
+	}
 
 	return nil
 }
 
+// func (c *ReverseExpandQuery) buildFiltersV2(
+//
+//	req *ReverseExpandRequest,
+//
+//	) ([]*openfgav1.ObjectRelation, string, string) {
+//		var userFilter []*openfgav1.ObjectRelation
+//		var relationFilter string
+//
+// }
 func (c *ReverseExpandQuery) reverseExpandDirectWeighted(
 	ctx context.Context,
 	req *ReverseExpandRequest,
