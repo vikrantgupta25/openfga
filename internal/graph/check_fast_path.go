@@ -95,7 +95,12 @@ func fastPathUnion(ctx context.Context, streams *iterator.Streams, outChan chan<
 	defer func() {
 		// flush
 		if len(batch) > 0 {
-			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch)}, outChan)
+			for _, item := range batch {
+				newBatch := []string{item}
+				concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](newBatch)}, outChan)
+
+			}
+			//concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch)}, outChan)
 		}
 		close(outChan)
 		streams.Stop()

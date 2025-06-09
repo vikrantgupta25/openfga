@@ -10408,3 +10408,41 @@ tests:
               relation: can_access
               object: deployment:1
             expectation: false
+  - name: experimental
+    stages:
+      - model: |
+          model
+            schema 1.1
+  
+          type user
+  
+          type group
+            relations
+              define parent: [group]
+              define member: [user] or member from parent
+  
+          type document
+            relations
+              define viewer: [group#member]
+        tuples:
+          - user: user:1
+            relation: member
+            object: group:0
+          - user: group:1#member
+            relation: viewer
+            object: document:1
+          - user: group:1_1
+            relation: parent
+            object: group:1
+          - user: group:1_2
+            relation: parent
+            object: group:1
+          - user: user:1
+            relation: member
+            object: group:1_2
+        checkAssertions:
+          - tuple:
+              user: user:1
+              relation: viewer
+              object: document:1
+            expectation: true
