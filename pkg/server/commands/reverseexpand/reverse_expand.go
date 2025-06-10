@@ -356,7 +356,6 @@ func (c *ReverseExpandQuery) execute(
 				req,
 				resolutionMetadata,
 				resultChan,
-				sourceUserObj,
 			)
 		}
 
