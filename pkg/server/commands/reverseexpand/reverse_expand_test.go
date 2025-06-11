@@ -924,6 +924,7 @@ func TestReverseExpandNew(t *testing.T) {
 		user            *UserRefObject
 		expectedObjects []string
 	}{
+		//define repo_admin: [user, organization#member]
 		{
 			name: "simple_ttu",
 			model: `model
@@ -932,7 +933,7 @@ func TestReverseExpandNew(t *testing.T) {
 				type organization
 				  relations
 					define member: [user]
-					define repo_admin: [user, organization#member]
+					define repo_admin: [organization#member]
 				type repo
 				  relations
 					define admin: repo_admin from owner
@@ -941,7 +942,8 @@ func TestReverseExpandNew(t *testing.T) {
 		`,
 			tuples: []string{
 				"repo:fga#owner@organization:jz",
-				"organization:jz#repo_admin@user:justin",
+				//"organization:jz#repo_admin@user:justin",
+				"organization:jz#member@user:justin",
 			},
 			objectType:      "repo",
 			relation:        "admin",
@@ -1014,7 +1016,6 @@ func TestReverseExpandNew(t *testing.T) {
 		//	type repo
 		//	  relations
 		//		define member: [user]
-		//		define member_wild: [user:*]
 		//		define computed_member: member
 		//		define owner: [user]
 		//		define admin: [user] or computed_member
