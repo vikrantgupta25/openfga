@@ -1006,7 +1006,7 @@ func TestReverseExpandNew(t *testing.T) {
 		//	relation:        "admin",
 		//	user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
 		//	expectedObjects: []string{"repo:fga"},
-		//},
+		// },
 		//{
 		//	name: "direct_and_algebraic",
 		//	model: `model
@@ -1020,7 +1020,7 @@ func TestReverseExpandNew(t *testing.T) {
 		//		define owner: [user]
 		//		define admin: [user] or computed_member
 		//		define or_admin: owner or admin
-		//`,
+		// `,
 		//	tuples: []string{
 		//		"repo:fga#member@user:justin",
 		//		"repo:fga#owner@user:z",
@@ -1116,6 +1116,81 @@ func TestReverseExpandNew(t *testing.T) {
 			relation:        "member",
 			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
 			expectedObjects: []string{"org:a"},
+		},
+		{
+			name: "simple_intersection_multiple_direct_assignments",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type team
+				  relations
+					define member: [user]
+				type org
+				  relations
+					define allowed: [user]
+					define member: [user, team#member] and allowed
+		`,
+			tuples: []string{
+				"org:a#allowed@user:bob",
+				"org:b#member@user:bob",
+				"org:a#member@user:bob",
+				"org:c#member@team:c#member",
+				"team:c#member@user:bob",
+				"org:c#allowed@user:bob",
+			},
+			objectType:      "org",
+			relation:        "member",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:a", "org:c"},
+		},
+		{
+			name: "simple_intersection_multiple_direct_assignments_not_linked_1",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type user2
+				type org
+				  relations
+					define allowed: [user]
+					define member: [user, user2] and allowed
+		`,
+			tuples: []string{
+				"org:a#allowed@user:bob",
+				"org:b#member@user:bob",
+				"org:a#member@user:bob",
+				"org:c#allowed@user:bob",
+				"org:d#member@user2:bob", // bob is user2 and there should be no link
+			},
+			objectType:      "org",
+			relation:        "member",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:a"},
+		},
+		{
+			name: "simple_intersection_multiple_direct_assignments_not_linked_2",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type user2
+				type org
+				  relations
+					define allowed: [user]
+					define member: [user, user2] and allowed
+		`,
+			tuples: []string{
+				"org:a#allowed@user:bob",
+				"org:b#member@user:bob",
+				"org:a#member@user:bob",
+				"org:c#allowed@user:bob",
+				"org:d#member@user2:bob", // bob is user2 and there should be no link
+			},
+			objectType:      "org",
+			relation:        "member",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user2", Id: "bob"}},
+			expectedObjects: []string{},
 		},
 		{
 			name: "simple_intersection_with_3_children",
@@ -1284,42 +1359,6 @@ func TestReverseExpandNew(t *testing.T) {
 			expectedObjects: []string{"org:a", "org:b"},
 		},
 		{
-			name: "complex_intersection_with_duplicate_union",
-			model: `model
-				  schema 1.1
-		
-				type user
-				type team
-				  relations
-					define member: [user]
-				type org
-				  relations
-					define allowed: [user]
-					define granted: [user]
-					define also_allowed: [user]
-					define member: [team#member] and ((allowed and also_allowed) or granted)
-		`,
-			tuples: []string{
-				"team:a#member@user:bob",
-				"org:a#member@team:a#member",
-				"org:b#member@team:a#member",
-				"org:a#allowed@user:bob",
-				"org:a#also_allowed@user:bob",
-				"org:b#also_allowed@user:bob",
-				"org:b#allowed@user:bob",
-				"org:c#allowed@user:bob",
-				"org:b#granted@user:bob",
-				"org:c#granted@user:bob",
-				"team:b#member@user:bob",
-				"org:d#member@team:b#member",
-				"team:c#member@user:bob",
-			},
-			objectType:      "org",
-			relation:        "member",
-			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
-			expectedObjects: []string{"org:a", "org:b"},
-		},
-		{
 			name: "lowest_weight_is_TTU_intersection",
 			model: `model
 				  schema 1.1
@@ -1343,6 +1382,52 @@ func TestReverseExpandNew(t *testing.T) {
 				"org:a#member@team:a#dept_member",
 				"team:a#dept_member@dept:a#member",
 				"dept:a#member@user:bob",
+				// these objects should not be found
+				"team:b#member@user:bob",
+				"org:b#team@team:b",
+				"dept:b#member@user:bob",
+				"org:c#member@team:c#dept_member",
+				"team:c#dept_member@dept:c#member",
+				"dept:c#member@user:bob",
+			},
+			objectType:      "org",
+			relation:        "member",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:a"},
+		},
+		// TODO: W3 on both left and right side
+		{
+			name: "lowest_weight_is_TTU_intersection_with_intersections",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type dept
+                  relations
+                    define member: [user]
+				type team
+				  relations
+					define member: [user]
+					define dept_member: [dept#member] and member
+				type org
+				  relations
+					define team: [team]
+					define member: [team#dept_member] and member from team
+		`,
+			tuples: []string{
+				"team:a#member@user:bob",
+				"org:a#team@team:a",
+				"org:a#member@team:a#dept_member",
+				"team:a#dept_member@dept:a#member",
+				"team:a#member@user:bob",
+				"dept:a#member@user:bob",
+				// these objects should not be found
+				"team:b#member@user:bob",
+				"org:b#team@team:b",
+				"dept:b#member@user:bob",
+				"org:c#member@team:c#dept_member",
+				"team:c#dept_member@dept:c#member",
+				"dept:c#member@user:bob",
 			},
 			objectType:      "org",
 			relation:        "member",
@@ -1370,6 +1455,413 @@ func TestReverseExpandNew(t *testing.T) {
 			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
 			expectedObjects: []string{"org:b"},
 		},
+		{
+			name: "simple_exclusion_no_direct_assignment",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type org
+				  relations
+					define banned: [user]
+					define member: [user]
+					define viewer: member but not banned
+		`,
+			tuples: []string{
+				"org:a#banned@user:bob",
+				"org:b#member@user:bob",
+				"org:a#member@user:bob",
+			},
+			objectType:      "org",
+			relation:        "viewer",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:b"},
+		},
+		{
+			name: "simple_exclusion_multiple_direct_assignments",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type team
+				  relations
+					define member: [user]
+				type org
+				  relations
+					define allowed: [user]
+					define member: [user, team#member] but not allowed
+		`,
+			tuples: []string{
+				"org:a#allowed@user:bob",
+				"org:b#member@user:bob",
+				"org:a#member@user:bob",
+				"org:c#member@team:c#member",
+				"team:c#member@user:bob",
+			},
+			objectType:      "org",
+			relation:        "member",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:b", "org:c"},
+		},
+		{
+			name: "simple_exclusion_multiple_direct_assignments_not_linked_1",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type user2
+				type org
+				  relations
+					define allowed: [user]
+					define member: [user, user2] but not allowed
+		`,
+			tuples: []string{
+				"org:a#allowed@user:bob",
+				"org:b#member@user:bob",
+				"org:a#member@user:bob",
+				"org:c#allowed@user:bob",
+				"org:d#member@user2:bob", // bob is user2 and there should be no link
+			},
+			objectType:      "org",
+			relation:        "member",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:b"},
+		},
+		{
+			name: "simple_exclusion_multiple_direct_assignments_not_linked_2",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type user2
+				type org
+				  relations
+					define allowed: [user]
+					define member: [user, user2] but not allowed
+		`,
+			tuples: []string{
+				"org:a#allowed@user:bob",
+				"org:b#member@user:bob",
+				"org:a#member@user:bob",
+				"org:c#allowed@user:bob",
+				"org:d#member@user2:bob", // even if right side not connected, it should still be good
+			},
+			objectType:      "org",
+			relation:        "member",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user2", Id: "bob"}},
+			expectedObjects: []string{"org:d"},
+		},
+		{
+			name: "simple_exclusion_with_double_negative",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type org
+				  relations
+					define allowed: [user]
+					define granted: [user]
+					define member: [user] but not (allowed but not granted)
+		`,
+			tuples: []string{
+				"org:a#member@user:bob",
+				"org:b#member@user:bob",
+				"org:b#allowed@user:bob",
+				"org:c#member@user:bob",
+				"org:c#allowed@user:bob",
+				"org:c#granted@user:bob",
+				"org:d#member@user:bob",
+				"org:d#granted@user:bob",
+			},
+			objectType:      "org",
+			relation:        "member",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:a", "org:c", "org:d"},
+		},
+		{
+			name: "exclusion_has_no_direct_assignment",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type team
+				  relations
+					define member: [user]
+				type org
+				  relations
+					define allowed: [user]
+					define granted: [user]
+					define member: [team#member]
+					define can_access: member but not (allowed but not granted)
+		`,
+			tuples: []string{
+				"team:a#member@user:bob",
+				"org:a#member@team:a#member",
+				"org:a#member@user:bob",
+				"team:b#member@user:bob",
+				"org:b#member@team:b#member",
+				"org:b#allowed@user:bob",
+				"team:c#member@user:bob",
+				"org:c#member@team:c#member",
+				"org:c#allowed@user:bob",
+				"org:c#granted@user:bob",
+				"team:d#member@user:bob",
+				"org:d#member@team:d#member",
+				"org:d#granted@user:bob",
+			},
+			objectType:      "org",
+			relation:        "can_access",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:a", "org:c", "org:d"},
+		},
+		{
+			name: "complex_exclusion_nested",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type team
+				  relations
+					define member: [user]
+				type org
+				  relations
+					define allowed: [user]
+					define granted: [user]
+					define also_allowed: [user]
+					define also_also_allowed: [user]
+					define member: [team#member] but not (((allowed or also_also_allowed) but not also_allowed) but not granted)
+		`,
+			tuples: []string{
+				"team:a#member@user:bob",
+				"org:a#member@team:a#member",
+				"team:b#member@user:bob",
+				"org:b#member@team:b#member",
+				"org:b#also_also_allowed@user:bob",
+				"team:c#member@user:bob",
+				"org:c#member@team:c#member",
+				"org:c#also_also_allowed@user:bob",
+				"org:c#also_allowed@user:bob",
+				"team:d#member@user:bob",
+				"org:d#member@team:d#member",
+				"org:d#also_also_allowed@user:bob",
+				"org:d#granted@user:bob",
+			},
+			objectType:      "org",
+			relation:        "member",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:a", "org:c", "org:d"},
+		},
+		{
+			name: "complex_exclusion_nested_and_union",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type team
+				  relations
+					define member: [user]
+				type org
+				  relations
+					define allowed: [user]
+					define granted: [user]
+					define also_allowed: [user]
+					define member: [team#member] but not ((allowed but not also_allowed) or granted)
+		`,
+			tuples: []string{
+				"team:a#member@user:bob",
+				"org:a#member@team:a#member",
+				"team:b#member@user:bob",
+				"org:b#member@team:b#member",
+				"org:b#allowed@user:bob",
+				"team:c#member@user:bob",
+				"org:c#member@team:c#member",
+				"org:c#allowed@user:bob",
+				"org:c#also_allowed@user:bob",
+				"team:d#member@user:bob",
+				"org:d#member@team:d#member",
+				"org:d#granted@user:bob",
+				"org:e#granted@user:bob",
+			},
+			objectType:      "org",
+			relation:        "member",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:a", "org:c"},
+		},
+		{
+			name: "exclusion_intersection",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type team
+				  relations
+					define member: [user]
+				type org
+				  relations
+					define allowed: [user]
+					define also_allowed: [user]
+					define member: [team#member] but not (allowed and also_allowed)
+		`,
+			tuples: []string{
+				"team:a#member@user:bob",
+				"org:a#member@team:a#member",
+				"team:b#member@user:bob",
+				"org:b#member@team:b#member",
+				"org:b#allowed@user:bob",
+				"team:c#member@user:bob",
+				"org:c#member@team:c#member",
+				"org:c#also_allowed@user:bob",
+				"team:d#member@user:bob",
+				"org:d#member@team:d#member",
+				"org:d#allowed@user:bob",
+				"org:d#also_allowed@user:bob",
+			},
+			objectType:      "org",
+			relation:        "member",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:a", "org:b", "org:c"},
+		},
+		{
+			name: "exclusion_intersection",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type team
+				  relations
+					define member: [user]
+				type org
+				  relations
+					define allowed: [user]
+					define also_allowed: [user]
+					define member: [team#member] and (allowed but not also_allowed)
+		`,
+			tuples: []string{
+				"team:a#member@user:bob",
+				"org:a#member@team:a#member",
+				"team:b#member@user:bob",
+				"org:b#member@team:b#member",
+				"org:b#allowed@user:bob",
+				"team:c#member@user:bob",
+				"org:c#member@team:c#member",
+				"org:c#allowed@user:bob",
+				"org:c#also_allowed@user:bob",
+				"team:d#member@user:bob",
+				"org:d#member@team:d#member",
+				"org:d#also_allowed@user:bob",
+			},
+			objectType:      "org",
+			relation:        "member",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:b"},
+		},
+		//{
+		// // This will not work because the userset w3 is not working
+		//	name: "exclusion_lowest_weight_is_TTU",
+		//	model: `model
+		//		  schema 1.1
+		//
+		//		type user
+		//		type dept
+		//         relations
+		//           define member: [user]
+		//		type team
+		//		  relations
+		//			define member: [user]
+		//			define dept_member: [dept#member]
+		//		type org
+		//		  relations
+		//			define team: [team]
+		//			define member: [team#dept_member] but not member from team
+		// `,
+		//	tuples: []string{
+		//		"org:a#member@team:a#dept_member",
+		//		"team:a#dept_member@dept:a#member",
+		//		"dept:a#member@user:bob",
+		//		// negative case
+		//		//"org:b#member@team:b#dept_member",
+		//		//"team:b#dept_member@dept:b#member",
+		//		//"dept:b#member@user:bob",
+		//		//"org:b#team@team:b",
+		//		//"team:b#member@user:bob",
+		//		//
+		//		//"org:c#member@team:c#dept_member",
+		//		//"team:c#dept_member@dept:c#member",
+		//		//"dept:c#member@user:bob",
+		//		//"org:c#team@team:c",
+		//	},
+		//	objectType:      "org",
+		//	relation:        "member",
+		//	user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		//	expectedObjects: []string{"org:a"},
+		// },
+		//{
+		// // This is not working
+		//	name: "userset_w3",
+		//	model: `model
+		//		  schema 1.1
+		//
+		//		type user
+		//		type dept
+		//         relations
+		//           define member: [user]
+		//		type team
+		//		  relations
+		//			define member: [user]
+		//			define dept_member: [dept#member]
+		//		type org
+		//		  relations
+		//			define team: [team]
+		//			define member: [team#dept_member]
+		//`,
+		//	tuples: []string{
+		//		"org:a#member@team:a#dept_member",
+		//		"team:a#dept_member@dept:a#member",
+		//		"dept:a#member@user:bob",
+		//	},
+		//	objectType:      "org",
+		//	relation:        "member",
+		//	user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		//	expectedObjects: []string{"org:a"},
+		//},
+		//{
+		//	name: "lowest_weight_is_TTU_intersection_with_intersections",
+		//	model: `model
+		//		  schema 1.1
+		//
+		//		type user
+		//		type dept
+		//          relations
+		//            define member: [user]
+		//		type team
+		//		  relations
+		//			define member: [user]
+		//			define dept_member: [dept#member] and member
+		//		type org
+		//		  relations
+		//			define team: [team]
+		//			define member: [team#dept_member] and member from team
+		//`,
+		//	tuples: []string{
+		//		"team:a#member@user:bob",
+		//		"org:a#team@team:a",
+		//		"org:a#member@team:a#dept_member",
+		//		"team:a#dept_member@dept:a#member",
+		//		"team:a#member@user:bob",
+		//		"dept:a#member@user:bob",
+		//		// these objects should not be found
+		//		"team:b#member@user:bob",
+		//		"org:b#team@team:b",
+		//		"dept:b#member@user:bob",
+		//		"org:c#member@team:c#dept_member",
+		//		"team:c#dept_member@dept:c#member",
+		//		"dept:c#member@user:bob",
+		//	},
+		//	objectType:      "org",
+		//	relation:        "member",
+		//	user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		//	expectedObjects: []string{"org:a"},
+		//},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
