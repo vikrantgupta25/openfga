@@ -174,9 +174,9 @@ func fastPathIntersection(ctx context.Context, streams *iterator.Streams, outCha
 	}()
 	/*
 		collect iterators from all channels, once none are nil
-		start performing intersection algorithm across the heads, if an iterator is drained
+		start performing Intersection algorithm across the heads, if an iterator is drained
 		ask to see if the channel has a new iterator, otherwise consider it done
-		exit if one of the channels closes as there is no more possible intersection of all
+		exit if one of the channels closes as there is no more possible Intersection of all
 	*/
 
 	childrenTotal := streams.GetActiveStreamsCount()
@@ -421,7 +421,7 @@ func fastPathRewrite(
 	}
 }
 
-// resolveFastPath attempts to find the intersection across 2 producers (channels) of ObjectIDs.
+// resolveFastPath attempts to find the Intersection across 2 producers (channels) of ObjectIDs.
 // In the case of a TTU:
 // Right channel is the result set of the Read of ObjectID/Relation that yields the User's ObjectID.
 // Left channel is the result set of ReadStartingWithUser of User/Relation that yields Object's ObjectID.

@@ -37,9 +37,9 @@ var (
 )
 
 const (
-	unionSetOperator setOperatorType = iota
-	intersectionSetOperator
-	exclusionSetOperator
+	UnionSetOperator setOperatorType = iota
+	IntersectionSetOperator
+	ExclusionSetOperator
 )
 
 type checkOutcome struct {
@@ -252,9 +252,9 @@ func union(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFu
 	return
 }
 
-// intersection implements a CheckFuncReducer that requires all of the provided CheckHandlerFunc to resolve
+// Intersection implements a CheckFuncReducer that requires all of the provided CheckHandlerFunc to resolve
 // to an allowed outcome. The first falsey or erroneous outcome causes premature termination of the reducer.
-func intersection(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (resp *ResolveCheckResponse, err error) {
+func Intersection(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (resp *ResolveCheckResponse, err error) {
 	if len(handlers) == 0 {
 		return &ResolveCheckResponse{
 			Allowed: false,
@@ -529,7 +529,7 @@ func (c *LocalChecker) ResolveCheck(
 		}, nil
 	}
 
-	resp, err := c.checkRewrite(ctx, req, rel.GetRewrite())(ctx)
+	resp, err := c.CheckRewrite(ctx, req, rel.GetRewrite())(ctx)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return nil, err
@@ -560,7 +560,7 @@ func (c *LocalChecker) hasCycle(req *ResolveCheckRequest) bool {
 // [group#owner][1, 3].
 type usersetsMapType map[string]storage.SortedSet
 
-// checkAssociatedObjects returns true if there is an intersection in the set of object IDs returned by an iterator built for objectRel,
+// checkAssociatedObjects returns true if there is an Intersection in the set of object IDs returned by an iterator built for objectRel,
 // and the set "objectIDs".
 func checkAssociatedObjects(ctx context.Context, req *ResolveCheckRequest, objectRel string, objectIDs storage.SortedSet) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "checkAssociatedObjects")
@@ -778,7 +778,7 @@ func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, req *ResolveChe
 }
 
 // checkUsersetFastPath is the fast path to evaluate userset.
-// The general idea of the algorithm is that it tries to find intersection on the objects as identified in the userset
+// The general idea of the algorithm is that it tries to find Intersection on the objects as identified in the userset
 // with the objects the user has the specified relation with.
 // For example, for the following model, for check(user:bob, viewer, doc:1)
 //
@@ -789,7 +789,7 @@ func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, req *ResolveChe
 //
 // We will first look up the group(s) that are assigned to doc:1
 // Next, we will look up all the group where user:bob is a member of.
-// Finally, find the intersection between the two.
+// Finally, find the Intersection between the two.
 // To use the fast path, we will need to ensure that the userset and all the children associated with the userset are
 // exclusively directly assignable. In our case, group member must be directly exclusively assignable.
 func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
@@ -1057,7 +1057,7 @@ func streamedLookupUsersetFromIterator(ctx context.Context, iter storage.TupleMa
 
 // processUsersetMessage will add the userset in the primarySet.
 // In addition, it returns whether the userset exists in secondarySet.
-// This is used to find the intersection between userset from user and userset from object.
+// This is used to find the Intersection between userset from user and userset from object.
 func processUsersetMessage(userset string,
 	primarySet *hashset.Set,
 	secondarySet *hashset.Set) bool {
@@ -1405,7 +1405,7 @@ func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRe
 // checkTTUFastPath is the fast path for checkTTU where we can short-circuit TTU evaluation.
 // This requires both the TTU's tuplesetRelation and computedRelation be exclusively directly assignable.
 // The general idea is to check whether user has relation with the specified TTU by finding object
-// intersection between tuplesetRelation's object AND objectType's computedRelation for user.  For example,
+// Intersection between tuplesetRelation's object AND objectType's computedRelation for user.  For example,
 //
 //	type group
 //	  define member: [user]
@@ -1413,7 +1413,7 @@ func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRe
 //	  define parent: [group]
 //	  define viewer: member from parent
 //
-// check(user, viewer, doc) will find the intersection of all group assigned to the doc's parent AND
+// check(user, viewer, doc) will find the Intersection of all group assigned to the doc's parent AND
 // all group where the user is a member of.
 func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "checkTTUFastPath")
@@ -1517,7 +1517,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 	}
 }
 
-func (c *LocalChecker) checkSetOperation(
+func (c *LocalChecker) CheckSetOperation(
 	ctx context.Context,
 	req *ResolveCheckRequest,
 	setOpType setOperatorType,
@@ -1528,21 +1528,21 @@ func (c *LocalChecker) checkSetOperation(
 
 	var reducerKey string
 	switch setOpType {
-	case unionSetOperator, intersectionSetOperator, exclusionSetOperator:
-		if setOpType == unionSetOperator {
+	case UnionSetOperator, IntersectionSetOperator, ExclusionSetOperator:
+		if setOpType == UnionSetOperator {
 			reducerKey = "union"
 		}
 
-		if setOpType == intersectionSetOperator {
-			reducerKey = "intersection"
+		if setOpType == IntersectionSetOperator {
+			reducerKey = "Intersection"
 		}
 
-		if setOpType == exclusionSetOperator {
+		if setOpType == ExclusionSetOperator {
 			reducerKey = "exclusion"
 		}
 
 		for _, child := range children {
-			handlers = append(handlers, c.checkRewrite(ctx, req, child))
+			handlers = append(handlers, c.CheckRewrite(ctx, req, child))
 		}
 	default:
 		return func(ctx context.Context) (*ResolveCheckResponse, error) {
@@ -1566,7 +1566,7 @@ func (c *LocalChecker) checkSetOperation(
 	}
 }
 
-func (c *LocalChecker) checkRewrite(
+func (c *LocalChecker) CheckRewrite(
 	ctx context.Context,
 	req *ResolveCheckRequest,
 	rewrite *openfgav1.Userset,
@@ -1579,11 +1579,11 @@ func (c *LocalChecker) checkRewrite(
 	case *openfgav1.Userset_TupleToUserset:
 		return c.checkTTU(ctx, req, rewrite)
 	case *openfgav1.Userset_Union:
-		return c.checkSetOperation(ctx, req, unionSetOperator, union, rw.Union.GetChild()...)
+		return c.CheckSetOperation(ctx, req, UnionSetOperator, union, rw.Union.GetChild()...)
 	case *openfgav1.Userset_Intersection:
-		return c.checkSetOperation(ctx, req, intersectionSetOperator, intersection, rw.Intersection.GetChild()...)
+		return c.CheckSetOperation(ctx, req, IntersectionSetOperator, Intersection, rw.Intersection.GetChild()...)
 	case *openfgav1.Userset_Difference:
-		return c.checkSetOperation(ctx, req, exclusionSetOperator, exclusion, rw.Difference.GetBase(), rw.Difference.GetSubtract())
+		return c.CheckSetOperation(ctx, req, ExclusionSetOperator, exclusion, rw.Difference.GetBase(), rw.Difference.GetSubtract())
 	default:
 		return func(ctx context.Context) (*ResolveCheckResponse, error) {
 			return nil, ErrUnknownSetOperator

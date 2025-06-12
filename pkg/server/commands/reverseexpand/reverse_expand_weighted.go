@@ -4,15 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
+
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
-	"sync"
 )
 
 type typeRelEntry struct {
@@ -27,7 +29,7 @@ type typeRelEntry struct {
 
 // TODO: this stack might need to be a stack of UserRefObject or UserRefObjectRelation or something
 // to be able to handle usersets and TTUs properly
-// relationStack is a stack of type#rel strings we build while traversing the graph to locate leaf nodes
+// relationStack is a stack of type#rel strings we build while traversing the graph to locate leaf nodes.
 type relationStack []typeRelEntry
 
 func (r *relationStack) Push(value typeRelEntry) {

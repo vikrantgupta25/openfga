@@ -42,7 +42,7 @@ func (s *recursiveObjectProvider) End() {
 
 func (s *recursiveObjectProvider) Begin(ctx context.Context, req *ResolveCheckRequest) (<-chan usersetMessage, error) {
 	// Note: we set sortContextualTuples to false because we don't care about ordering of results,
-	// since the consumer is using hashsets to check for intersection.
+	// since the consumer is using hashsets to check for Intersection.
 	userIter, err := checkutil.IteratorReadStartingFromUser(ctx, s.ts, s.ds, req,
 		tuple.ToObjectRelationString(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation()),
 		nil, false)

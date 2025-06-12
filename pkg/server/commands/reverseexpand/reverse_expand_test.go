@@ -924,7 +924,7 @@ func TestReverseExpandNew(t *testing.T) {
 		user            *UserRefObject
 		expectedObjects []string
 	}{
-		//define repo_admin: [user, organization#member]
+		// define repo_admin: [user, organization#member]
 		//{
 		//	name: "simple_ttu",
 		//	model: `model

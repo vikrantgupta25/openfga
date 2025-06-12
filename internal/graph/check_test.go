@@ -547,7 +547,7 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 	concurrencyLimit := 10
 
 	t.Run("no_handlers_return_false", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit)
+		resp, err := Intersection(ctx, concurrencyLimit)
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
 		require.NotNil(t, resp.GetResolutionMetadata())
@@ -555,54 +555,54 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 	})
 
 	t.Run("false_return_false", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, falseHandler)
+		resp, err := Intersection(ctx, concurrencyLimit, falseHandler)
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
 		require.False(t, resp.GetCycleDetected())
 	})
 
 	t.Run("true_and_true_return_true", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, trueHandler, trueHandler)
+		resp, err := Intersection(ctx, concurrencyLimit, trueHandler, trueHandler)
 		require.NoError(t, err)
 		require.True(t, resp.GetAllowed())
 		require.False(t, resp.GetCycleDetected())
 	})
 
 	t.Run("true_and_false_return_false", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, trueHandler, falseHandler)
+		resp, err := Intersection(ctx, concurrencyLimit, trueHandler, falseHandler)
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
 		require.False(t, resp.GetCycleDetected())
 	})
 
 	t.Run("false_and_true_return_false", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, falseHandler, trueHandler)
+		resp, err := Intersection(ctx, concurrencyLimit, falseHandler, trueHandler)
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
 		require.False(t, resp.GetCycleDetected())
 	})
 
 	t.Run("false_and_false_return_false", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, falseHandler, falseHandler)
+		resp, err := Intersection(ctx, concurrencyLimit, falseHandler, falseHandler)
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
 		require.False(t, resp.GetCycleDetected())
 	})
 
 	t.Run("true_and_err_return_err", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, trueHandler, generalErrorHandler)
+		resp, err := Intersection(ctx, concurrencyLimit, trueHandler, generalErrorHandler)
 		require.EqualError(t, err, simulatedDBErrorMessage)
 		require.Nil(t, resp)
 	})
 
 	t.Run("true_and_errResolutionDepth_return_err", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, trueHandler, depthExceededHandler)
+		resp, err := Intersection(ctx, concurrencyLimit, trueHandler, depthExceededHandler)
 		require.ErrorIs(t, err, ErrResolutionDepthExceeded)
 		require.Nil(t, resp)
 	})
 
 	t.Run("true_and_cycle_return_false", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, trueHandler, cyclicErrorHandler)
+		resp, err := Intersection(ctx, concurrencyLimit, trueHandler, cyclicErrorHandler)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.False(t, resp.GetAllowed())
@@ -610,7 +610,7 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 	})
 
 	t.Run("false_and_err_return_false", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, falseHandler, generalErrorHandler)
+		resp, err := Intersection(ctx, concurrencyLimit, falseHandler, generalErrorHandler)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.False(t, resp.GetAllowed())
@@ -618,7 +618,7 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 	})
 
 	t.Run("false_and_errResolutionDepth_return_false", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, falseHandler, depthExceededHandler)
+		resp, err := Intersection(ctx, concurrencyLimit, falseHandler, depthExceededHandler)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.False(t, resp.GetAllowed())
@@ -626,26 +626,26 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 	})
 
 	t.Run("false_and_cycle_return_false", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, falseHandler, cyclicErrorHandler)
+		resp, err := Intersection(ctx, concurrencyLimit, falseHandler, cyclicErrorHandler)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.False(t, resp.GetAllowed())
 	})
 
 	t.Run("err_and_true_return_err", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, generalErrorHandler, trueHandler)
+		resp, err := Intersection(ctx, concurrencyLimit, generalErrorHandler, trueHandler)
 		require.EqualError(t, err, simulatedDBErrorMessage)
 		require.Nil(t, resp)
 	})
 
 	t.Run("errResolutionDepth_and_true_return_err", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, depthExceededHandler, trueHandler)
+		resp, err := Intersection(ctx, concurrencyLimit, depthExceededHandler, trueHandler)
 		require.ErrorIs(t, err, ErrResolutionDepthExceeded)
 		require.Nil(t, resp)
 	})
 
 	t.Run("cycle_and_true_return_false", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, cyclicErrorHandler, trueHandler)
+		resp, err := Intersection(ctx, concurrencyLimit, cyclicErrorHandler, trueHandler)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.False(t, resp.GetAllowed())
@@ -653,7 +653,7 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 	})
 
 	t.Run("err_and_false_return_false", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, generalErrorHandler, falseHandler)
+		resp, err := Intersection(ctx, concurrencyLimit, generalErrorHandler, falseHandler)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.False(t, resp.GetAllowed())
@@ -661,7 +661,7 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 	})
 
 	t.Run("errResolutionDepth_and_false_return_false", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, depthExceededHandler, falseHandler)
+		resp, err := Intersection(ctx, concurrencyLimit, depthExceededHandler, falseHandler)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.False(t, resp.GetAllowed())
@@ -669,14 +669,14 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 	})
 
 	t.Run("cycle_and_false_return_false", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, cyclicErrorHandler, falseHandler)
+		resp, err := Intersection(ctx, concurrencyLimit, cyclicErrorHandler, falseHandler)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.False(t, resp.GetAllowed())
 	})
 
 	t.Run("cycle_and_err_return_false", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, cyclicErrorHandler, generalErrorHandler)
+		resp, err := Intersection(ctx, concurrencyLimit, cyclicErrorHandler, generalErrorHandler)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.False(t, resp.GetAllowed())
@@ -684,7 +684,7 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 	})
 
 	t.Run("cycle_and_errResolutionDepth_return_false", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, cyclicErrorHandler, depthExceededHandler)
+		resp, err := Intersection(ctx, concurrencyLimit, cyclicErrorHandler, depthExceededHandler)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.False(t, resp.GetAllowed())
@@ -692,7 +692,7 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 	})
 
 	t.Run("err_and_cycle_return_false", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, generalErrorHandler, cyclicErrorHandler)
+		resp, err := Intersection(ctx, concurrencyLimit, generalErrorHandler, cyclicErrorHandler)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.False(t, resp.GetAllowed())
@@ -700,7 +700,7 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 	})
 
 	t.Run("errResolutionDepth_and_cycle_return_false", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, depthExceededHandler, cyclicErrorHandler)
+		resp, err := Intersection(ctx, concurrencyLimit, depthExceededHandler, cyclicErrorHandler)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.False(t, resp.GetAllowed())
@@ -708,7 +708,7 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 	})
 
 	t.Run("cycle_and_cycle_return_false", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, cyclicErrorHandler, cyclicErrorHandler)
+		resp, err := Intersection(ctx, concurrencyLimit, cyclicErrorHandler, cyclicErrorHandler)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.False(t, resp.GetAllowed())
@@ -716,19 +716,19 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 	})
 
 	t.Run("err_and_err_return_err", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, generalErrorHandler, generalErrorHandler)
+		resp, err := Intersection(ctx, concurrencyLimit, generalErrorHandler, generalErrorHandler)
 		require.ErrorContains(t, err, simulatedDBErrorMessage)
 		require.Nil(t, resp)
 	})
 
 	t.Run("errResolutionDepth_and_errResolutionDepth_return_errResolutionDepth", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, depthExceededHandler, depthExceededHandler)
+		resp, err := Intersection(ctx, concurrencyLimit, depthExceededHandler, depthExceededHandler)
 		require.ErrorIs(t, err, ErrResolutionDepthExceeded)
 		require.Nil(t, resp)
 	})
 
 	t.Run("true_and_cycle_and_err_return_err", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, trueHandler, cyclicErrorHandler, generalErrorHandler)
+		resp, err := Intersection(ctx, concurrencyLimit, trueHandler, cyclicErrorHandler, generalErrorHandler)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.False(t, resp.GetAllowed())
@@ -739,7 +739,7 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 		t.Cleanup(cancel)
 
-		resp, err := intersection(ctx, concurrencyLimit, falseHandler)
+		resp, err := Intersection(ctx, concurrencyLimit, falseHandler)
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
 	})
@@ -748,7 +748,7 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 		t.Cleanup(cancel)
 
-		resp, err := intersection(ctx, concurrencyLimit, trueHandler)
+		resp, err := Intersection(ctx, concurrencyLimit, trueHandler)
 		require.NoError(t, err)
 		require.True(t, resp.GetAllowed())
 	})
@@ -764,7 +764,7 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 			}, nil
 		}
 
-		resp, err := intersection(ctx, concurrencyLimit, slowTrueHandler)
+		resp, err := Intersection(ctx, concurrencyLimit, slowTrueHandler)
 		require.ErrorIs(t, err, context.DeadlineExceeded)
 		require.Nil(t, resp)
 	})
@@ -782,7 +782,7 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 			cancel()
 		}()
 
-		resp, err := intersection(ctx, concurrencyLimit, falseHandler)
+		resp, err := Intersection(ctx, concurrencyLimit, falseHandler)
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
 
@@ -800,7 +800,7 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 			}, nil
 		}
 
-		resp, err := intersection(ctx, concurrencyLimit, slowTrueHandler)
+		resp, err := Intersection(ctx, concurrencyLimit, slowTrueHandler)
 		require.ErrorIs(t, err, context.DeadlineExceeded)
 		require.Nil(t, resp)
 	})
@@ -825,7 +825,7 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 			}, nil
 		}
 
-		resp, err := intersection(ctx, concurrencyLimit, slowTrueHandler)
+		resp, err := Intersection(ctx, concurrencyLimit, slowTrueHandler)
 		require.ErrorIs(t, err, context.Canceled)
 		require.Nil(t, resp)
 
@@ -837,7 +837,7 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 			panic(panicErr)
 		}
 
-		resp, err := intersection(ctx, concurrencyLimit, panicHandler)
+		resp, err := Intersection(ctx, concurrencyLimit, panicHandler)
 		require.ErrorContains(t, err, panicErr)
 		require.ErrorIs(t, err, ErrPanic)
 		require.Nil(t, resp)
@@ -1717,7 +1717,7 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 			cancel()
 		}()
 
-		resp, err := intersection(ctx, concurrencyLimit, trueHandler)
+		resp, err := Intersection(ctx, concurrencyLimit, trueHandler)
 		require.NoError(t, err)
 		require.True(t, resp.GetAllowed())
 

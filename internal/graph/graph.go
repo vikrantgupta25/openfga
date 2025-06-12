@@ -116,7 +116,7 @@ func (g *RelationshipGraph) GetRelationshipEdges(target *openfgav1.RelationRefer
 }
 
 // GetPrunedRelationshipEdges finds all paths from a source to a target and then returns all the edges at distance 0 or 1 of the source in those paths.
-// If the edges from the source to the target pass through a relationship involving intersection or exclusion (directly or indirectly),
+// If the edges from the source to the target pass through a relationship involving Intersection or exclusion (directly or indirectly),
 // then GetPrunedRelationshipEdges will just return the first-most edge involved in that rewrite.
 //
 // Consider the following model:
@@ -129,7 +129,7 @@ func (g *RelationshipGraph) GetRelationshipEdges(target *openfgav1.RelationRefer
 //	  define viewer: [user] and allowed
 //
 // The pruned relationship edges from the 'user' type to 'document#viewer' returns only the edge from 'user' to 'document#viewer' and with a 'RequiresFurtherEvalCondition'.
-// This is because when evaluating relationships involving intersection or exclusion we choose to only evaluate one operand of the rewrite rule, and for each result found
+// This is because when evaluating relationships involving Intersection or exclusion we choose to only evaluate one operand of the rewrite rule, and for each result found
 // we call Check on the result to evaluate the sub-condition on the 'and allowed' bit.
 func (g *RelationshipGraph) GetPrunedRelationshipEdges(target *openfgav1.RelationReference, source *openfgav1.RelationReference) ([]*RelationshipEdge, error) {
 	return g.getRelationshipEdges(target, source, map[string]struct{}{}, resolveAnyEdge)
