@@ -238,6 +238,22 @@ func WithLogger(logger logger.Logger) ReverseExpandQueryOption {
 	}
 }
 
+func (c *ReverseExpandQuery) shallowClone() *ReverseExpandQuery {
+	return &ReverseExpandQuery{
+		logger:                         c.logger,
+		datastore:                      c.datastore,
+		typesystem:                     c.typesystem,
+		resolveNodeLimit:               c.resolveNodeLimit,
+		resolveNodeBreadthLimit:        c.resolveNodeBreadthLimit,
+		dispatchThrottlerConfig:        c.dispatchThrottlerConfig,
+		visitedUsersetsMap:             c.visitedUsersetsMap,
+		candidateObjectsMap:            new(sync.Map),
+		listObjectOptimizationsEnabled: c.listObjectOptimizationsEnabled,
+		checkResolver:                  c.checkResolver,
+		localCheckResolver:             c.localCheckResolver,
+	}
+}
+
 // Execute yields all the objects of the provided objectType that the
 // given user possibly has, a specific relation with and sends those
 // objects to resultChan. It MUST guarantee no duplicate objects sent.
@@ -362,7 +378,7 @@ func (c *ReverseExpandQuery) execute(
 			req.stack.Push(typeRelEntry{typeRel: targetTypeRel})
 		}
 
-		edges, needsCheck, err := c.typesystem.GetEdgesFromWeightedGraph(
+		edges, _, err := c.typesystem.GetEdgesFromWeightedGraph(
 			targetTypeRel,
 			sourceUserType,
 		)
@@ -374,7 +390,7 @@ func (c *ReverseExpandQuery) execute(
 			return c.loopOverWeightedEdges(
 				ctx,
 				edges,
-				needsCheck || intersectionOrExclusionInPreviousEdges, /* TODO: eventually remove this */
+				false, // no need to call check at the end
 				req,
 				resolutionMetadata,
 				resultChan,

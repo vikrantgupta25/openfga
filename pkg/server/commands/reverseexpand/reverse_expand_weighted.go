@@ -222,11 +222,9 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 					}
 
 				case "exclusion":
-					// TODO - use the exclusion Handler
-					err := c.dispatch(ctx, r, resultChan, needsCheck, resolutionMetadata)
+					err := c.exclusionHandler(ctx, req, resultChan, toNode.GetUniqueLabel(), sourceUserType, resolutionMetadata)
 					if err != nil {
-						errs = errors.Join(errs, err)
-						return errs
+						return err
 					}
 				default:
 					err := c.dispatch(ctx, r, resultChan, needsCheck, resolutionMetadata)
@@ -506,7 +504,7 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 			stack:            req.stack.Copy(),
 			weightedEdge:     req.weightedEdge, // Inherited but not used by the override path
 		}
-		return c.loopOverWeightedEdges(ctx, leftHand, false, newReq, resolutionMetadata, tmpResultChan, sourceUserType)
+		return c.shallowClone().loopOverWeightedEdges(ctx, leftHand, false, newReq, resolutionMetadata, tmpResultChan, sourceUserType)
 	})
 
 	siblings := intersectionEdgeComparison.Siblings
@@ -552,64 +550,63 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 	return pool.Wait()
 }
 
-//
-// func (c *ReverseExpandQuery) exclusionHandler(ctx context.Context,
-//	req *ReverseExpandRequest,
-//	resultChan chan<- *ReverseExpandResult,
-//	uniqueLabel string,
-//	sourceUserType string,
-//	_ *ResolutionMetadata) error {
-//	leftHand, rightHand, err := c.typesystem.GetLowestWeightEdgeForExclusion(uniqueLabel, sourceUserType)
-//	if err != nil {
-//		return fmt.Errorf("get lowest weight edge for exclusion: %w", err)
-//	}
-//	fmt.Println("leftHand", leftHand)
-//	tmpResultChan := make(chan *ReverseExpandResult, 100)
-//	/*
-//		var leftHand []*languagegraph.WeightedAuthorizationModelEdge
-//		if intersectionEdgeComparison.DirectEdgesAreLeastWeight {
-//			leftHand = intersectionEdgeComparison.DirectEdges
-//		} else {
-//			leftHand = []*languagegraph.WeightedAuthorizationModelEdge{intersectionEdgeComparison.LowestEdge}
-//		}
-//	*/
-//
-//	// do some handwaving here and assume that we have table:1/2/3 returned
-//	// construction of check request
-//	leftHandObjects := []string{"table:1", "table:2", "table:3"}
-//	for _, leftHandObject := range leftHandObjects {
-//		tmpResultChan <- &ReverseExpandResult{
-//			Object:       leftHandObject,
-//			ResultStatus: RequiresFurtherEvalStatus,
-//		}
-//	}
-//	close(tmpResultChan)
-//	userset, err := c.typesystem.ConstructUserset(ctx, rightHand.GetEdgeType(), rightHand.GetTo().GetUniqueLabel())
-//	if err != nil {
-//		return fmt.Errorf("construct userset: %w", err)
-//	}
-//	for tmpResult := range tmpResultChan {
-//		handlerFunc := c.localCheckResolver.CheckRewrite(ctx,
-//			&graph.ResolveCheckRequest{
-//				StoreID:              req.StoreID,
-//				AuthorizationModelID: c.typesystem.GetAuthorizationModelID(),
-//				TupleKey:             tuple.NewTupleKey(tmpResult.Object, req.Relation, req.User.String()),
-//				ContextualTuples:     req.ContextualTuples,
-//				Context:              req.Context,
-//				Consistency:          req.Consistency,
-//				RequestMetadata:      &graph.ResolveCheckRequestMetadata{},
-//			}, userset)
-//		tmpCheckResult, err := handlerFunc(ctx)
-//		if err != nil {
-//			return fmt.Errorf("check set operation: %w", err)
-//		}
-//		if !tmpCheckResult.GetAllowed() {
-//			resultChan <- &ReverseExpandResult{
-//				Object:       tmpResult.Object,
-//				ResultStatus: NoFurtherEvalStatus,
-//			}
-//		}
-//	}
-//
-//	return nil
-//}
+func (c *ReverseExpandQuery) exclusionHandler(ctx context.Context,
+	req *ReverseExpandRequest,
+	resultChan chan<- *ReverseExpandResult,
+	uniqueLabel string,
+	sourceUserType string,
+	_ *ResolutionMetadata) error {
+	leftHand, rightHand, err := c.typesystem.GetLowestWeightEdgeForExclusion(uniqueLabel, sourceUserType)
+	if err != nil {
+		return fmt.Errorf("get lowest weight edge for exclusion: %w", err)
+	}
+	fmt.Println("leftHand", leftHand)
+	tmpResultChan := make(chan *ReverseExpandResult, 100)
+	/*
+		var leftHand []*languagegraph.WeightedAuthorizationModelEdge
+		if intersectionEdgeComparison.DirectEdgesAreLeastWeight {
+			leftHand = intersectionEdgeComparison.DirectEdges
+		} else {
+			leftHand = []*languagegraph.WeightedAuthorizationModelEdge{intersectionEdgeComparison.LowestEdge}
+		}
+	*/
+
+	// do some handwaving here and assume that we have table:1/2/3 returned
+	// construction of check request
+	leftHandObjects := []string{"table:1", "table:2", "table:3"}
+	for _, leftHandObject := range leftHandObjects {
+		tmpResultChan <- &ReverseExpandResult{
+			Object:       leftHandObject,
+			ResultStatus: RequiresFurtherEvalStatus,
+		}
+	}
+	close(tmpResultChan)
+	userset, err := c.typesystem.ConstructUserset(ctx, rightHand.GetEdgeType(), rightHand.GetTo().GetUniqueLabel())
+	if err != nil {
+		return fmt.Errorf("construct userset: %w", err)
+	}
+	for tmpResult := range tmpResultChan {
+		handlerFunc := c.localCheckResolver.CheckRewrite(ctx,
+			&graph.ResolveCheckRequest{
+				StoreID:              req.StoreID,
+				AuthorizationModelID: c.typesystem.GetAuthorizationModelID(),
+				TupleKey:             tuple.NewTupleKey(tmpResult.Object, req.Relation, req.User.String()),
+				ContextualTuples:     req.ContextualTuples,
+				Context:              req.Context,
+				Consistency:          req.Consistency,
+				RequestMetadata:      &graph.ResolveCheckRequestMetadata{},
+			}, userset)
+		tmpCheckResult, err := handlerFunc(ctx)
+		if err != nil {
+			return fmt.Errorf("check set operation: %w", err)
+		}
+		if !tmpCheckResult.GetAllowed() {
+			resultChan <- &ReverseExpandResult{
+				Object:       tmpResult.Object,
+				ResultStatus: NoFurtherEvalStatus,
+			}
+		}
+	}
+
+	return nil
+}

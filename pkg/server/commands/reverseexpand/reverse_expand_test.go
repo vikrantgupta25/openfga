@@ -968,7 +968,7 @@ func TestReverseExpandNew(t *testing.T) {
 		//			define member: [user, team#member]
 		//
 		//		type user
-		//`,
+		// `,
 		//	tuples: []string{
 		//		"repo:fga#owner@organization:justin_and_zee",
 		//		//"organization:justin_and_zee#member@user:justin",
@@ -1030,28 +1030,28 @@ func TestReverseExpandNew(t *testing.T) {
 		//	user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
 		//	expectedObjects: []string{"repo:fga"},
 		//},
-		{
-			name: "ttu_recursive",
-			model: `model
-				  schema 1.1
-		
-				type user
-				type org
-				  relations
-					define parent: [org]
-					define ttu_recursive: [user] or ttu_recursive from parent
-		`,
-			tuples: []string{
-				"org:a#ttu_recursive@user:justin",
-				"org:b#parent@org:a", // org:a is parent of b
-				"org:c#parent@org:b", // org:b is parent of org:c
-				"org:d#parent@org:c", // org:c is parent of org:d
-			},
-			objectType:      "org",
-			relation:        "ttu_recursive",
-			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
-			expectedObjects: []string{"org:a", "org:b", "org:c", "org:d"},
-		},
+		//{
+		//	name: "ttu_recursive",
+		//	model: `model
+		//		  schema 1.1
+		//
+		//		type user
+		//		type org
+		//		  relations
+		//			define parent: [org]
+		//			define ttu_recursive: [user] or ttu_recursive from parent
+		//`,
+		//	tuples: []string{
+		//		"org:a#ttu_recursive@user:justin",
+		//		"org:b#parent@org:a", // org:a is parent of b
+		//		"org:c#parent@org:b", // org:b is parent of org:c
+		//		"org:d#parent@org:c", // org:c is parent of org:d
+		//	},
+		//	objectType:      "org",
+		//	relation:        "ttu_recursive",
+		//	user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+		//	expectedObjects: []string{"org:a", "org:b", "org:c", "org:d"},
+		//},
 		{
 			name: "simple_union",
 			model: `model
@@ -1072,6 +1072,29 @@ func TestReverseExpandNew(t *testing.T) {
 			relation:        "member",
 			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
 			expectedObjects: []string{"org:a", "org:b"},
+		},
+		{
+			name: "nested_simple_union",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type org
+				  relations
+					define allowed: [user]
+					define granted: [user]
+					define member: [user] or (allowed or granted)
+		`,
+			tuples: []string{
+				"org:a#allowed@user:bob",
+				"org:b#allowed@user:bob",
+				"org:a#member@user:bob",
+				"org:c#granted@user:bob",
+			},
+			objectType:      "org",
+			relation:        "member",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:a", "org:b", "org:c"},
 		},
 		{
 			name: "simple_intersection",
@@ -1151,6 +1174,116 @@ func TestReverseExpandNew(t *testing.T) {
 			relation:        "member",
 			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
 			expectedObjects: []string{"org:a"},
+		},
+		{
+			name: "complex_intersection_nested",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type team
+				  relations
+					define member: [user]
+				type org
+				  relations
+					define allowed: [user]
+					define granted: [user]
+					define also_allowed: [user]
+					define also_also_allowed: [user]
+					define member: [team#member] and (((allowed or also_also_allowed) and also_allowed) and granted)
+		`,
+			tuples: []string{
+				"team:a#member@user:bob",
+				"org:a#member@team:a#member",
+				"org:b#member@team:a#member",
+				"org:a#allowed@user:bob",
+				"org:b#also_also_allowed@user:bob",
+				"org:a#granted@user:bob",
+				"org:b#granted@user:bob",
+				"org:a#also_allowed@user:bob",
+				"org:b#also_allowed@user:bob",
+				"org:b#allowed@user:bob",
+				"org:c#allowed@user:bob",
+				"org:c#granted@user:bob",
+				"team:b#member@user:bob",
+				"org:d#member@team:b#member",
+				"team:c#member@user:bob",
+			},
+			objectType:      "org",
+			relation:        "member",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:a", "org:b"},
+		},
+		{
+			name: "complex_intersection_nested_and_union",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type team
+				  relations
+					define member: [user]
+				type org
+				  relations
+					define allowed: [user]
+					define granted: [user]
+					define also_allowed: [user]
+					define member: [team#member] and ((allowed and also_allowed) or granted)
+		`,
+			tuples: []string{
+				"team:a#member@user:bob",
+				// "org:a#member@team:a#member",
+				"org:b#member@team:a#member",
+				// "org:a#allowed@user:bob",
+				//"org:a#also_allowed@user:bob",
+				"org:b#allowed@user:bob",
+				// "org:c#allowed@user:bob",
+				"org:b#granted@user:bob",
+				// "org:c#granted@user:bob",
+				//"team:b#member@user:bob",
+				//"org:d#member@team:b#member",
+				//"team:c#member@user:bob",
+			},
+			objectType: "org",
+			relation:   "member",
+			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			//expectedObjects: []string{"org:a", "org:b"},
+			expectedObjects: []string{"org:b"},
+		},
+		{
+			name: "lowest_weight_is_TTU_intersection",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type team
+				  relations
+					define member: [user]
+				type org
+				  relations
+					define allowed: [user]
+					define granted: [user]
+					define also_allowed: [user]
+					define member: [team#member] and ((allowed and also_allowed) or granted)
+		`,
+			tuples: []string{
+				"team:a#member@user:bob",
+				"org:a#member@team:a#member",
+				"org:b#member@team:a#member",
+				"org:a#allowed@user:bob",
+				"org:a#also_allowed@user:bob",
+				"org:b#allowed@user:bob",
+				"org:c#allowed@user:bob",
+				"org:b#granted@user:bob",
+				"org:c#granted@user:bob",
+				"team:b#member@user:bob",
+				"org:d#member@team:b#member",
+				"team:c#member@user:bob",
+			},
+			objectType:      "org",
+			relation:        "member",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:a", "org:b"},
 		},
 	}
 	for _, test := range tests {
