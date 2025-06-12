@@ -978,7 +978,7 @@ func TestReverseExpandNew(t *testing.T) {
 		//	relation:        "admin",
 		//	user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
 		//	expectedObjects: []string{"repo:fga"},
-		//},
+		// },
 		//{
 		//	name: "ttu_multiple_types_with_rewrites",
 		//	model: `model
@@ -1232,23 +1232,58 @@ func TestReverseExpandNew(t *testing.T) {
 		`,
 			tuples: []string{
 				"team:a#member@user:bob",
-				// "org:a#member@team:a#member",
+				"org:a#member@team:a#member",
 				"org:b#member@team:a#member",
-				// "org:a#allowed@user:bob",
-				//"org:a#also_allowed@user:bob",
+				"org:a#allowed@user:bob",
+				"org:a#also_allowed@user:bob",
 				"org:b#allowed@user:bob",
-				// "org:c#allowed@user:bob",
+				"org:c#allowed@user:bob",
 				"org:b#granted@user:bob",
-				// "org:c#granted@user:bob",
-				//"team:b#member@user:bob",
-				//"org:d#member@team:b#member",
-				//"team:c#member@user:bob",
+				"org:c#granted@user:bob",
+				"team:b#member@user:bob",
+				"org:d#member@team:b#member",
+				"team:c#member@user:bob",
 			},
-			objectType: "org",
-			relation:   "member",
-			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
-			//expectedObjects: []string{"org:a", "org:b"},
-			expectedObjects: []string{"org:b"},
+			objectType:      "org",
+			relation:        "member",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:a", "org:b"},
+		},
+		{
+			name: "complex_intersection_with_duplicate_union",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type team
+				  relations
+					define member: [user]
+				type org
+				  relations
+					define allowed: [user]
+					define granted: [user]
+					define also_allowed: [user]
+					define member: [team#member] and ((allowed and also_allowed) or granted)
+		`,
+			tuples: []string{
+				"team:a#member@user:bob",
+				"org:a#member@team:a#member",
+				"org:b#member@team:a#member",
+				"org:a#allowed@user:bob",
+				"org:a#also_allowed@user:bob",
+				"org:b#also_allowed@user:bob",
+				"org:b#allowed@user:bob",
+				"org:c#allowed@user:bob",
+				"org:b#granted@user:bob",
+				"org:c#granted@user:bob",
+				"team:b#member@user:bob",
+				"org:d#member@team:b#member",
+				"team:c#member@user:bob",
+			},
+			objectType:      "org",
+			relation:        "member",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:a", "org:b"},
 		},
 		{
 			name: "lowest_weight_is_TTU_intersection",

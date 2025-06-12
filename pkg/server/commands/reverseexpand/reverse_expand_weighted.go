@@ -538,9 +538,9 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 				return fmt.Errorf("check set operation: %w", err)
 			}
 			if tmpCheckResult.GetAllowed() {
-				resultChan <- &ReverseExpandResult{
-					Object:       tmpResult.Object,
-					ResultStatus: NoFurtherEvalStatus,
+				err = c.trySendCandidate(ctx, false, tmpResult.Object, resultChan)
+				if err != nil {
+					return err
 				}
 			}
 		}
