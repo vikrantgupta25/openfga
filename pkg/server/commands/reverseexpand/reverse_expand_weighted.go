@@ -477,21 +477,7 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 	} else {
 		leftHand = []*weightedGraph.WeightedAuthorizationModelEdge{intersectionEdgeComparison.LowestEdge}
 	}
-	// when we calculate left hand side, we call loopOverWeightedEdges but with current stack
 
-	// do some handwaving here and assume that we have table:1/2/3 returned
-	// construction of check request
-	/*
-		leftHandObjects := []string{"table:1", "table:2", "table:3"}
-		for _, leftHandObject := range leftHandObjects {
-			tmpResultChan <- &ReverseExpandResult{
-				Object:       leftHandObject,
-				ResultStatus: RequiresFurtherEvalStatus,
-			}
-		}
-		close(tmpResultChan)
-
-	*/
 	pool := concurrency.NewPool(ctx, 2)
 	pool.Go(func(ctx context.Context) error {
 		defer close(tmpResultChan)
@@ -531,7 +517,7 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 					ContextualTuples:     req.ContextualTuples,
 					Context:              req.Context,
 					Consistency:          req.Consistency,
-					RequestMetadata:      &graph.ResolveCheckRequestMetadata{},
+					RequestMetadata:      graph.NewCheckRequestMetadata(),
 				}, graph.IntersectionSetOperator, graph.Intersection, usersets...)
 			tmpCheckResult, err := handlerFunc(ctx)
 			if err != nil {
@@ -555,58 +541,56 @@ func (c *ReverseExpandQuery) exclusionHandler(ctx context.Context,
 	resultChan chan<- *ReverseExpandResult,
 	uniqueLabel string,
 	sourceUserType string,
-	_ *ResolutionMetadata) error {
+	resolutionMetadata *ResolutionMetadata) error {
 	leftHand, rightHand, err := c.typesystem.GetLowestWeightEdgeForExclusion(uniqueLabel, sourceUserType)
 	if err != nil {
 		return fmt.Errorf("get lowest weight edge for exclusion: %w", err)
 	}
-	fmt.Println("leftHand", leftHand)
 	tmpResultChan := make(chan *ReverseExpandResult, 100)
-	/*
-		var leftHand []*languagegraph.WeightedAuthorizationModelEdge
-		if intersectionEdgeComparison.DirectEdgesAreLeastWeight {
-			leftHand = intersectionEdgeComparison.DirectEdges
-		} else {
-			leftHand = []*languagegraph.WeightedAuthorizationModelEdge{intersectionEdgeComparison.LowestEdge}
+	pool := concurrency.NewPool(ctx, 2)
+	pool.Go(func(ctx context.Context) error {
+		defer close(tmpResultChan)
+		newReq := &ReverseExpandRequest{
+			StoreID:          req.StoreID,
+			Consistency:      req.Consistency,
+			Context:          req.Context,
+			ContextualTuples: req.ContextualTuples,
+			User:             req.User,
+			stack:            req.stack.Copy(),
+			weightedEdge:     req.weightedEdge, // Inherited but not used by the override path
 		}
-	*/
+		return c.shallowClone().loopOverWeightedEdges(ctx, leftHand, false, newReq, resolutionMetadata, tmpResultChan, sourceUserType)
+	})
 
-	// do some handwaving here and assume that we have table:1/2/3 returned
-	// construction of check request
-	leftHandObjects := []string{"table:1", "table:2", "table:3"}
-	for _, leftHandObject := range leftHandObjects {
-		tmpResultChan <- &ReverseExpandResult{
-			Object:       leftHandObject,
-			ResultStatus: RequiresFurtherEvalStatus,
-		}
-	}
-	close(tmpResultChan)
 	userset, err := c.typesystem.ConstructUserset(ctx, rightHand.GetEdgeType(), rightHand.GetTo().GetUniqueLabel())
 	if err != nil {
 		return fmt.Errorf("construct userset: %w", err)
 	}
-	for tmpResult := range tmpResultChan {
-		handlerFunc := c.localCheckResolver.CheckRewrite(ctx,
-			&graph.ResolveCheckRequest{
-				StoreID:              req.StoreID,
-				AuthorizationModelID: c.typesystem.GetAuthorizationModelID(),
-				TupleKey:             tuple.NewTupleKey(tmpResult.Object, req.Relation, req.User.String()),
-				ContextualTuples:     req.ContextualTuples,
-				Context:              req.Context,
-				Consistency:          req.Consistency,
-				RequestMetadata:      &graph.ResolveCheckRequestMetadata{},
-			}, userset)
-		tmpCheckResult, err := handlerFunc(ctx)
-		if err != nil {
-			return fmt.Errorf("check set operation: %w", err)
-		}
-		if !tmpCheckResult.GetAllowed() {
-			resultChan <- &ReverseExpandResult{
-				Object:       tmpResult.Object,
-				ResultStatus: NoFurtherEvalStatus,
+	pool.Go(func(ctx context.Context) error {
+		for tmpResult := range tmpResultChan {
+			handlerFunc := c.localCheckResolver.CheckRewrite(ctx,
+				&graph.ResolveCheckRequest{
+					StoreID:              req.StoreID,
+					AuthorizationModelID: c.typesystem.GetAuthorizationModelID(),
+					TupleKey:             tuple.NewTupleKey(tmpResult.Object, req.Relation, req.User.String()),
+					ContextualTuples:     req.ContextualTuples,
+					Context:              req.Context,
+					Consistency:          req.Consistency,
+					RequestMetadata:      graph.NewCheckRequestMetadata(),
+				}, userset)
+			tmpCheckResult, err := handlerFunc(ctx)
+			if err != nil {
+				return fmt.Errorf("check set operation: %w", err)
+			}
+			if !tmpCheckResult.GetAllowed() {
+				err = c.trySendCandidate(ctx, false, tmpResult.Object, resultChan)
+				if err != nil {
+					return err
+				}
 			}
 		}
-	}
+		return nil
+	})
 
-	return nil
+	return pool.Wait()
 }

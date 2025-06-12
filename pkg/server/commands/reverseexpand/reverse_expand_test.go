@@ -996,7 +996,7 @@ func TestReverseExpandNew(t *testing.T) {
 		//		  relations
 		//		    define member: [user]
 		//		type user
-		//`,
+		// `,
 		//	tuples: []string{
 		//		"team:jz#member@user:justin",
 		//		"organization:jz#repo_admin@team:jz#member",
@@ -1176,6 +1176,40 @@ func TestReverseExpandNew(t *testing.T) {
 			expectedObjects: []string{"org:a"},
 		},
 		{
+			name: "intersection_has_no_direct_assignment",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type team
+				  relations
+					define member: [user]
+				type org
+				  relations
+					define allowed: [user]
+					define granted: [user]
+					define member: [team#member]
+					define can_access: member and (allowed and granted)
+		`,
+			tuples: []string{
+				"team:a#member@user:bob",
+				"org:a#member@team:a#member",
+				"org:b#member@team:a#member",
+				"org:a#allowed@user:bob",
+				"org:a#granted@user:bob",
+				"org:b#allowed@user:bob",
+				"org:c#allowed@user:bob",
+				"org:c#granted@user:bob",
+				"team:b#member@user:bob",
+				"org:d#member@team:b#member",
+				"team:c#member@user:bob",
+			},
+			objectType:      "org",
+			relation:        "can_access",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:a"},
+		},
+		{
 			name: "complex_intersection_nested",
 			model: `model
 				  schema 1.1
@@ -1291,34 +1325,50 @@ func TestReverseExpandNew(t *testing.T) {
 				  schema 1.1
 		
 				type user
+				type dept
+                  relations
+                    define member: [user]
 				type team
 				  relations
 					define member: [user]
+					define dept_member: [dept#member]
 				type org
 				  relations
-					define allowed: [user]
-					define granted: [user]
-					define also_allowed: [user]
-					define member: [team#member] and ((allowed and also_allowed) or granted)
+					define team: [team]
+					define member: [team#dept_member] and member from team
 		`,
 			tuples: []string{
 				"team:a#member@user:bob",
-				"org:a#member@team:a#member",
-				"org:b#member@team:a#member",
-				"org:a#allowed@user:bob",
-				"org:a#also_allowed@user:bob",
-				"org:b#allowed@user:bob",
-				"org:c#allowed@user:bob",
-				"org:b#granted@user:bob",
-				"org:c#granted@user:bob",
-				"team:b#member@user:bob",
-				"org:d#member@team:b#member",
-				"team:c#member@user:bob",
+				"org:a#team@team:a",
+				"org:a#member@team:a#dept_member",
+				"team:a#dept_member@dept:a#member",
+				"dept:a#member@user:bob",
 			},
 			objectType:      "org",
 			relation:        "member",
 			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
-			expectedObjects: []string{"org:a", "org:b"},
+			expectedObjects: []string{"org:a"},
+		},
+		{
+			name: "simple_exclusion",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type org
+				  relations
+					define banned: [user]
+					define member: [user] but not banned
+		`,
+			tuples: []string{
+				"org:a#banned@user:bob",
+				"org:b#member@user:bob",
+				"org:a#member@user:bob",
+			},
+			objectType:      "org",
+			relation:        "member",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:b"},
 		},
 	}
 	for _, test := range tests {
