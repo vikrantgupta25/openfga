@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"sync"
+
+	"go.uber.org/zap"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
@@ -12,9 +15,11 @@ import (
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
+	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 type typeRelEntry struct {
@@ -80,6 +85,7 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 	req *ReverseExpandRequest,
 	resolutionMetadata *ResolutionMetadata,
 	resultChan chan<- *ReverseExpandResult,
+	sourceUserType string,
 ) error {
 	pool := concurrency.NewPool(ctx, 1)
 
@@ -195,12 +201,42 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 			if toNode.GetNodeType() != weightedGraph.OperatorNode {
 				_ = r.stack.Pop()
 				r.stack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
+				err := c.dispatch(ctx, r, resultChan, needsCheck, resolutionMetadata)
+				if err != nil {
+					errs = errors.Join(errs, err)
+					return errs
+				}
+			} else {
+				log.Println(toNode.GetUniqueLabel(), toNode.GetLabel())
+				switch toNode.GetLabel() {
+				case "intersection":
+					intersectionEdgeComparison, err := c.typesystem.GetLowestEdgesAndTheirSiblingsForIntersection(toNode.GetUniqueLabel(), sourceUserType)
+					if err != nil {
+						c.logger.Error("Failed to get edges from weighted graph", zap.Error(err))
+						return err
+					}
+
+					err = c.intersectionHandler(ctx, req, resultChan, intersectionEdgeComparison, resolutionMetadata, sourceUserType)
+					if err != nil {
+						return err
+					}
+
+				case "exclusion":
+					// TODO - use the exclusion Handler
+					err := c.dispatch(ctx, r, resultChan, needsCheck, resolutionMetadata)
+					if err != nil {
+						errs = errors.Join(errs, err)
+						return errs
+					}
+				default:
+					err := c.dispatch(ctx, r, resultChan, needsCheck, resolutionMetadata)
+					if err != nil {
+						errs = errors.Join(errs, err)
+						return errs
+					}
+				}
 			}
-			err := c.dispatch(ctx, r, resultChan, needsCheck, resolutionMetadata)
-			if err != nil {
-				errs = errors.Join(errs, err)
-				return errs
-			}
+
 		default:
 			panic("unsupported edge type")
 		}
@@ -295,7 +331,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 				typeRel = req.stack.Pop().typeRel
 				userFilter = append(userFilter, &openfgav1.ObjectRelation{Object: tuple.BuildObject(to.GetUniqueLabel(), userID)})
 
-			case weightedGraph.SpecificTypeWildcard: // Wildcard Referece To() -> "user:*"
+			case weightedGraph.SpecificTypeWildcard: // Wildcard Reference To() -> "user:*"
 				typeRel = req.stack.Pop().typeRel
 				userFilter = append(userFilter, &openfgav1.ObjectRelation{Object: to.GetUniqueLabel()})
 
@@ -428,3 +464,152 @@ func (c *ReverseExpandQuery) queryForTuples(
 	}
 	return errs
 }
+
+func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
+	req *ReverseExpandRequest,
+	resultChan chan<- *ReverseExpandResult,
+	intersectionEdgeComparison *typesystem.IntersectionEdgeComparison,
+	resolutionMetadata *ResolutionMetadata,
+	sourceUserType string) error {
+	tmpResultChan := make(chan *ReverseExpandResult, 100)
+
+	var leftHand []*weightedGraph.WeightedAuthorizationModelEdge
+	if intersectionEdgeComparison.DirectEdgesAreLeastWeight {
+		leftHand = intersectionEdgeComparison.DirectEdges
+	} else {
+		leftHand = []*weightedGraph.WeightedAuthorizationModelEdge{intersectionEdgeComparison.LowestEdge}
+	}
+	// when we calculate left hand side, we call loopOverWeightedEdges but with current stack
+
+	// do some handwaving here and assume that we have table:1/2/3 returned
+	// construction of check request
+	/*
+		leftHandObjects := []string{"table:1", "table:2", "table:3"}
+		for _, leftHandObject := range leftHandObjects {
+			tmpResultChan <- &ReverseExpandResult{
+				Object:       leftHandObject,
+				ResultStatus: RequiresFurtherEvalStatus,
+			}
+		}
+		close(tmpResultChan)
+
+	*/
+	pool := concurrency.NewPool(ctx, 2)
+	pool.Go(func(ctx context.Context) error {
+		defer close(tmpResultChan)
+		newReq := &ReverseExpandRequest{
+			StoreID:          req.StoreID,
+			Consistency:      req.Consistency,
+			Context:          req.Context,
+			ContextualTuples: req.ContextualTuples,
+			User:             req.User,
+			stack:            req.stack.Copy(),
+			weightedEdge:     req.weightedEdge, // Inherited but not used by the override path
+		}
+		return c.loopOverWeightedEdges(ctx, leftHand, false, newReq, resolutionMetadata, tmpResultChan, sourceUserType)
+	})
+
+	siblings := intersectionEdgeComparison.Siblings
+	usersets := make([]*openfgav1.Userset, 0, len(siblings)+1)
+	if !intersectionEdgeComparison.DirectEdgesAreLeastWeight && len(intersectionEdgeComparison.DirectEdges) > 0 {
+		usersets = append(usersets, typesystem.This())
+	}
+
+	for _, sibling := range siblings {
+		userset, err := c.typesystem.ConstructUserset(ctx, sibling.GetEdgeType(), sibling.GetTo().GetUniqueLabel())
+		if err != nil {
+			return fmt.Errorf("construct userset: %w", err)
+		}
+		usersets = append(usersets, userset)
+	}
+	pool.Go(func(ctx context.Context) error {
+		// fill usersets with the siblings
+		for tmpResult := range tmpResultChan {
+			handlerFunc := c.localCheckResolver.CheckSetOperation(ctx,
+				&graph.ResolveCheckRequest{
+					StoreID:              req.StoreID,
+					AuthorizationModelID: c.typesystem.GetAuthorizationModelID(),
+					TupleKey:             tuple.NewTupleKey(tmpResult.Object, req.Relation, req.User.String()),
+					ContextualTuples:     req.ContextualTuples,
+					Context:              req.Context,
+					Consistency:          req.Consistency,
+					RequestMetadata:      &graph.ResolveCheckRequestMetadata{},
+				}, graph.IntersectionSetOperator, graph.Intersection, usersets...)
+			tmpCheckResult, err := handlerFunc(ctx)
+			if err != nil {
+				return fmt.Errorf("check set operation: %w", err)
+			}
+			if tmpCheckResult.GetAllowed() {
+				resultChan <- &ReverseExpandResult{
+					Object:       tmpResult.Object,
+					ResultStatus: NoFurtherEvalStatus,
+				}
+			}
+		}
+		return nil
+	})
+
+	return pool.Wait()
+}
+
+//
+// func (c *ReverseExpandQuery) exclusionHandler(ctx context.Context,
+//	req *ReverseExpandRequest,
+//	resultChan chan<- *ReverseExpandResult,
+//	uniqueLabel string,
+//	sourceUserType string,
+//	_ *ResolutionMetadata) error {
+//	leftHand, rightHand, err := c.typesystem.GetLowestWeightEdgeForExclusion(uniqueLabel, sourceUserType)
+//	if err != nil {
+//		return fmt.Errorf("get lowest weight edge for exclusion: %w", err)
+//	}
+//	fmt.Println("leftHand", leftHand)
+//	tmpResultChan := make(chan *ReverseExpandResult, 100)
+//	/*
+//		var leftHand []*languagegraph.WeightedAuthorizationModelEdge
+//		if intersectionEdgeComparison.DirectEdgesAreLeastWeight {
+//			leftHand = intersectionEdgeComparison.DirectEdges
+//		} else {
+//			leftHand = []*languagegraph.WeightedAuthorizationModelEdge{intersectionEdgeComparison.LowestEdge}
+//		}
+//	*/
+//
+//	// do some handwaving here and assume that we have table:1/2/3 returned
+//	// construction of check request
+//	leftHandObjects := []string{"table:1", "table:2", "table:3"}
+//	for _, leftHandObject := range leftHandObjects {
+//		tmpResultChan <- &ReverseExpandResult{
+//			Object:       leftHandObject,
+//			ResultStatus: RequiresFurtherEvalStatus,
+//		}
+//	}
+//	close(tmpResultChan)
+//	userset, err := c.typesystem.ConstructUserset(ctx, rightHand.GetEdgeType(), rightHand.GetTo().GetUniqueLabel())
+//	if err != nil {
+//		return fmt.Errorf("construct userset: %w", err)
+//	}
+//	for tmpResult := range tmpResultChan {
+//		handlerFunc := c.localCheckResolver.CheckRewrite(ctx,
+//			&graph.ResolveCheckRequest{
+//				StoreID:              req.StoreID,
+//				AuthorizationModelID: c.typesystem.GetAuthorizationModelID(),
+//				TupleKey:             tuple.NewTupleKey(tmpResult.Object, req.Relation, req.User.String()),
+//				ContextualTuples:     req.ContextualTuples,
+//				Context:              req.Context,
+//				Consistency:          req.Consistency,
+//				RequestMetadata:      &graph.ResolveCheckRequestMetadata{},
+//			}, userset)
+//		tmpCheckResult, err := handlerFunc(ctx)
+//		if err != nil {
+//			return fmt.Errorf("check set operation: %w", err)
+//		}
+//		if !tmpCheckResult.GetAllowed() {
+//			resultChan <- &ReverseExpandResult{
+//				Object:       tmpResult.Object,
+//				ResultStatus: NoFurtherEvalStatus,
+//			}
+//		}
+//	}
+//
+//	return nil
+//}

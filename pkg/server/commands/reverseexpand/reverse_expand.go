@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 	"sync/atomic"
 
@@ -130,6 +131,10 @@ type ReverseExpandQuery struct {
 	candidateObjectsMap *sync.Map
 
 	listObjectOptimizationsEnabled bool
+
+	// Resolvers required to call check locally
+	checkResolver      graph.CheckResolver
+	localCheckResolver *graph.LocalChecker
 }
 
 type ReverseExpandQueryOption func(d *ReverseExpandQuery)
@@ -158,6 +163,12 @@ func WithListObjectOptimizationsEnabled(enabled bool) ReverseExpandQueryOption {
 	}
 }
 
+func WithCheckResolver(resolver graph.CheckResolver) ReverseExpandQueryOption {
+	return func(d *ReverseExpandQuery) {
+		d.checkResolver = resolver
+	}
+}
+
 // TODO accept ReverseExpandRequest so we can build the datastore object right away.
 func NewReverseExpandQuery(ds storage.RelationshipTupleReader, ts *typesystem.TypeSystem, opts ...ReverseExpandQueryOption) *ReverseExpandQuery {
 	query := &ReverseExpandQuery{
@@ -174,10 +185,21 @@ func NewReverseExpandQuery(ds storage.RelationshipTupleReader, ts *typesystem.Ty
 		},
 		candidateObjectsMap: new(sync.Map),
 		visitedUsersetsMap:  new(sync.Map),
+		checkResolver:       nil,
+		localCheckResolver:  nil,
 	}
 
 	for _, opt := range opts {
 		opt(query)
+	}
+
+	localCheckResolver, found := graph.LocalCheckResolver(query.checkResolver)
+	if found {
+		query.localCheckResolver = localCheckResolver
+	} else {
+		// this should never happen, use default value as a fallback
+		log.Println("No local check resolver found, using default local checker")
+		query.localCheckResolver = graph.NewLocalChecker()
 	}
 
 	return query
@@ -352,10 +374,11 @@ func (c *ReverseExpandQuery) execute(
 			return c.loopOverWeightedEdges(
 				ctx,
 				edges,
-				needsCheck || intersectionOrExclusionInPreviousEdges,
+				needsCheck || intersectionOrExclusionInPreviousEdges, /* TODO: eventually remove this */
 				req,
 				resolutionMetadata,
 				resultChan,
+				sourceUserType,
 			)
 		}
 

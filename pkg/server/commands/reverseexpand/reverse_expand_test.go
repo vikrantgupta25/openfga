@@ -939,7 +939,7 @@ func TestReverseExpandNew(t *testing.T) {
 		//			define admin: repo_admin from owner
 		//			define owner: [organization]
 		//		type user
-		//`,
+		// `,
 		//	tuples: []string{
 		//		"repo:fga#owner@organization:jz",
 		//		"organization:jz#repo_admin@organization:j#member",
@@ -949,7 +949,7 @@ func TestReverseExpandNew(t *testing.T) {
 		//	relation:        "admin",
 		//	user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
 		//	expectedObjects: []string{"repo:fga"},
-		//},
+		// },
 		//{
 		//	name: "ttu_from_union",
 		//	model: `model
@@ -1051,6 +1051,106 @@ func TestReverseExpandNew(t *testing.T) {
 			relation:        "ttu_recursive",
 			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
 			expectedObjects: []string{"org:a", "org:b", "org:c", "org:d"},
+		},
+		{
+			name: "simple_union",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type org
+				  relations
+					define allowed: [user]
+					define member: [user] or allowed
+		`,
+			tuples: []string{
+				"org:a#allowed@user:bob",
+				"org:b#allowed@user:bob", // org:a is parent of b
+				"org:a#member@user:bob",  // org:b is parent of org:c
+			},
+			objectType:      "org",
+			relation:        "member",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:a", "org:b"},
+		},
+		{
+			name: "simple_intersection",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type org
+				  relations
+					define allowed: [user]
+					define member: [user] and allowed
+		`,
+			tuples: []string{
+				"org:a#allowed@user:bob",
+				"org:b#member@user:bob",
+				"org:a#member@user:bob",
+			},
+			objectType:      "org",
+			relation:        "member",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:a"},
+		},
+		{
+			name: "simple_intersection_with_3_children",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type org
+				  relations
+					define allowed: [user]
+					define granted: [user]
+					define member: [user] and allowed and granted
+		`,
+			tuples: []string{
+				"org:a#allowed@user:bob",
+				"org:a#member@user:bob",
+				"org:a#granted@user:bob",
+				"org:b#member@user:bob",
+				"org:c#allowed@user:bob",
+				"org:c#granted@user:bob",
+			},
+			objectType:      "org",
+			relation:        "member",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:a"},
+		},
+		{
+			name: "simple_intersection_nested",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type team
+				  relations
+					define member: [user]
+				type org
+				  relations
+					define allowed: [user]
+					define granted: [user]
+					define member: [team#member] and (allowed and granted)
+		`,
+			tuples: []string{
+				"team:a#member@user:bob",
+				"org:a#member@team:a#member",
+				"org:b#member@team:a#member",
+				"org:a#allowed@user:bob",
+				"org:a#granted@user:bob",
+				"org:b#allowed@user:bob",
+				"org:c#allowed@user:bob",
+				"org:c#granted@user:bob",
+				"team:b#member@user:bob",
+				"org:d#member@team:b#member",
+				"team:c#member@user:bob",
+			},
+			objectType:      "org",
+			relation:        "member",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:a"},
 		},
 	}
 	for _, test := range tests {

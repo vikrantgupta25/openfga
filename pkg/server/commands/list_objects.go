@@ -324,6 +324,7 @@ func (q *ListObjectsQuery) evaluate(
 			reverseexpand.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
 			reverseexpand.WithLogger(q.logger),
 			reverseexpand.WithListObjectOptimizationsEnabled(q.listObjectOptimizationsEnabled),
+			reverseexpand.WithCheckResolver(q.checkResolver), // newly added
 		)
 
 		reverseExpandDoneWithError := make(chan struct{}, 1)

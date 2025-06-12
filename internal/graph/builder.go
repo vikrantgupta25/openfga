@@ -111,3 +111,22 @@ func (c *CheckResolverOrderedBuilder) close() {
 		resolver.Close()
 	}
 }
+
+// LocalCheckResolver returns the local checker in the chain of CheckResolver.
+func LocalCheckResolver(resolver CheckResolver) (*LocalChecker, bool) {
+	if resolver == nil {
+		return nil, false
+	}
+	localChecker, ok := resolver.(*LocalChecker)
+	if ok {
+		return localChecker, true
+	}
+	delegate := resolver.GetDelegate()
+	if delegate != nil {
+		if delegate == resolver {
+			return nil, false
+		}
+		return LocalCheckResolver(delegate)
+	}
+	return nil, false
+}
