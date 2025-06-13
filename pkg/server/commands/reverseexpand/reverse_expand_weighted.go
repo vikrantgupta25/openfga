@@ -90,11 +90,10 @@ func (r *relationStack) Copy() []typeRelEntry {
 func (c *ReverseExpandQuery) loopOverWeightedEdges(
 	ctx context.Context,
 	edges []*weightedGraph.WeightedAuthorizationModelEdge,
-	needsCheck bool,
 	req *ReverseExpandRequest,
 	resolutionMetadata *ResolutionMetadata,
 	resultChan chan<- *ReverseExpandResult,
-	sourceUserType string,
+	sourceUserType string, // check to see if we can get away not using this
 ) error {
 	pool := concurrency.NewPool(ctx, 1) // TODO: this is not a real value
 
@@ -152,7 +151,7 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 				r.stack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 
 				// Now continue traversing
-				err := c.dispatch(ctx, r, resultChan, needsCheck, resolutionMetadata)
+				err := c.dispatch(ctx, r, resultChan, false, resolutionMetadata)
 				if err != nil {
 					errs = errors.Join(errs, err)
 					return errs
@@ -167,7 +166,6 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 				return c.queryForTuples(
 					ctx,
 					r,
-					needsCheck,
 					resultChan,
 				)
 			})
@@ -180,7 +178,7 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 				r.stack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 			}
 
-			err := c.dispatch(ctx, r, resultChan, needsCheck, resolutionMetadata)
+			err := c.dispatch(ctx, r, resultChan, false, resolutionMetadata)
 			if err != nil {
 				errs = errors.Join(errs, err)
 				return errs
@@ -209,7 +207,7 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 			// Push target type#rel (`folder#admin`)
 			r.stack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 
-			err := c.dispatch(ctx, r, resultChan, needsCheck, resolutionMetadata)
+			err := c.dispatch(ctx, r, resultChan, false, resolutionMetadata)
 			if err != nil {
 				errs = errors.Join(errs, err)
 				return errs
@@ -221,7 +219,7 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 			if toNode.GetNodeType() != weightedGraph.OperatorNode {
 				_ = r.stack.Pop()
 				r.stack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
-				err := c.dispatch(ctx, r, resultChan, needsCheck, resolutionMetadata)
+				err := c.dispatch(ctx, r, resultChan, false, resolutionMetadata)
 				if err != nil {
 					errs = errors.Join(errs, err)
 					return errs
@@ -247,7 +245,7 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 						return err
 					}
 				default:
-					err := c.dispatch(ctx, r, resultChan, needsCheck, resolutionMetadata)
+					err := c.dispatch(ctx, r, resultChan, false, resolutionMetadata)
 					if err != nil {
 						errs = errors.Join(errs, err)
 						return errs
@@ -299,7 +297,6 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 func (c *ReverseExpandQuery) queryForTuples(
 	ctx context.Context,
 	req *ReverseExpandRequest,
-	needsCheck bool,
 	resultChan chan<- *ReverseExpandResult,
 ) error {
 	// TODO: don't forget telemetry
@@ -428,7 +425,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 			// If there are no more type#rel to look for in the stack that means we have hit the base case
 			// and this object is a candidate for return to the user.
 			if len(r.stack) == 0 {
-				_ = c.trySendCandidate(ctx, needsCheck, foundObject, resultChan)
+				_ = c.trySendCandidate(ctx, false, foundObject, resultChan)
 				continue
 			}
 
@@ -439,7 +436,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 			if r.stack.Peek().isRecursive {
 				// If the recursive relation is the last one in the stack, the found object itself could be a final result.
 				if len(r.stack) == 1 {
-					_ = c.trySendCandidate(ctx, needsCheck, foundObject, resultChan)
+					_ = c.trySendCandidate(ctx, false, foundObject, resultChan)
 				}
 
 				// Path 1: Continue the recursive search.
@@ -509,7 +506,7 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 			stack:            req.stack.Copy(),
 			weightedEdge:     req.weightedEdge, // Inherited but not used by the override path
 		}
-		return c.shallowClone().loopOverWeightedEdges(ctx, leftHand, false, newReq, resolutionMetadata, tmpResultChan, sourceUserType)
+		return c.shallowClone().loopOverWeightedEdges(ctx, leftHand, newReq, resolutionMetadata, tmpResultChan, sourceUserType)
 	})
 
 	siblings := intersectionEdgeComparison.Siblings
@@ -578,7 +575,7 @@ func (c *ReverseExpandQuery) exclusionHandler(ctx context.Context,
 			stack:            req.stack.Copy(),
 			weightedEdge:     req.weightedEdge, // Inherited but not used by the override path
 		}
-		return c.shallowClone().loopOverWeightedEdges(ctx, leftHand, false, newReq, resolutionMetadata, tmpResultChan, sourceUserType)
+		return c.shallowClone().loopOverWeightedEdges(ctx, leftHand, newReq, resolutionMetadata, tmpResultChan, sourceUserType)
 	})
 
 	userset, err := c.typesystem.ConstructUserset(ctx, rightHand.GetEdgeType(), rightHand.GetTo().GetUniqueLabel())

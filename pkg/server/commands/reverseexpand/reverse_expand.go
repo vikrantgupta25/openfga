@@ -406,7 +406,6 @@ func (c *ReverseExpandQuery) execute(
 			return c.loopOverWeightedEdges(
 				ctx,
 				edges,
-				false, // no need to call check at the end
 				req,
 				resolutionMetadata,
 				resultChan,

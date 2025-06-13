@@ -1822,45 +1822,45 @@ func TestReverseExpandNew(t *testing.T) {
 			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
 			expectedObjects: []string{"org:b"},
 		},
-		//{
-		//	name: "exclusion_lowest_weight_is_TTU",
-		//	model: `model
-		//		  schema 1.1
-		//
-		//		type user
-		//		type dept
-		//        relations
-		//          define member: [user]
-		//		type team
-		//		  relations
-		//			define member: [user]
-		//			define dept_member: [dept#member]
-		//		type org
-		//		  relations
-		//			define team: [team]
-		//			define member: [team#dept_member] but not member from team
-		//`,
-		//	tuples: []string{
-		//		"org:a#member@team:a#dept_member",
-		//		"team:a#dept_member@dept:a#member",
-		//		"dept:a#member@user:bob",
-		//		// negative case
-		//		"org:b#member@team:b#dept_member",
-		//		"team:b#dept_member@dept:b#member",
-		//		"dept:b#member@user:bob",
-		//		"org:b#team@team:b",
-		//		"team:b#member@user:bob",
-		//
-		//		"org:c#member@team:c#dept_member",
-		//		"team:c#dept_member@dept:c#member",
-		//		"dept:c#member@user:bob",
-		//		"org:c#team@team:c",
-		//	},
-		//	objectType:      "org",
-		//	relation:        "member",
-		//	user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
-		//	expectedObjects: []string{"org:a"},
-		//},
+		{
+			name: "exclusion_lowest_weight_is_TTU",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type dept
+		       relations
+		         define member: [user]
+				type team
+				  relations
+					define member: [user]
+					define dept_member: [dept#member]
+				type org
+				  relations
+					define team: [team]
+					define member: [team#dept_member] but not member from team
+		`,
+			tuples: []string{
+				"org:a#member@team:a#dept_member",
+				"team:a#dept_member@dept:a#member",
+				"dept:a#member@user:bob",
+				// negative case
+				"org:b#member@team:b#dept_member",
+				"team:b#dept_member@dept:b#member",
+				"dept:b#member@user:bob",
+				"org:b#team@team:b",
+				"team:b#member@user:bob",
+
+				"org:c#member@team:c#dept_member",
+				"team:c#dept_member@dept:c#member",
+				"dept:c#member@user:bob",
+				"org:c#team@team:c",
+			},
+			objectType:      "org",
+			relation:        "member",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:a", "org:c"},
+		},
 		{
 			name: "userset_w3",
 			model: `model
