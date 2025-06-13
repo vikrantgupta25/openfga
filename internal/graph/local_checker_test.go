@@ -838,3 +838,297 @@ type user
 		}
 	}
 }
+
+func TestLocalChecker_InsanelyComplicatedScenario(t *testing.T) {
+	model := `
+model
+  schema 1.1
+type resource
+  relations
+    define parent: [resource]
+    define related: [resource]
+    define sibling: [resource]
+    define shadow: [resource]
+    define banned: [user, group#member, team#member] or banned from parent or banned from related or banned from sibling or banned from shadow
+    define editor: [user, group#member, team#member] or editor from parent or editor from related or editor from sibling or editor from shadow
+    define admin: [user, group#member, team#member] or admin from parent or admin from related or admin from sibling or admin from shadow
+    define privileged: editor and admin
+    define allowed: privileged but not banned
+    define viewer: [user, group#member, team#member] or allowed or viewer from parent or viewer from related or viewer from sibling or viewer from shadow
+type group
+  relations
+    define member: [user, user:*]
+type team
+  relations
+    define member: [user, group#member, user:*]
+type user
+`
+	tuples := []*openfgav1.TupleKey{}
+	depth := 5
+	breadth := 4
+
+	// Build a highly connected, cyclic, and wide/deep graph with shadow links and multi-level exclusions
+	for d := 0; d <= depth; d++ {
+		for b := 0; b < breadth; b++ {
+			uid := fmt.Sprintf("user:d%db%d", d, b)
+			rid := fmt.Sprintf("resource:l%ds%d", d, b)
+			gid := fmt.Sprintf("group:g%ds%d", d, b)
+			tid := fmt.Sprintf("team:t%ds%d", d, b)
+
+			// Direct assignments
+			tuples = append(tuples,
+				tuple.NewTupleKey(rid, "editor", uid),
+				tuple.NewTupleKey(rid, "admin", uid),
+				tuple.NewTupleKey(rid, "banned", "user:evil"),
+				tuple.NewTupleKey(gid, "member", uid),
+				tuple.NewTupleKey(tid, "member", uid),
+				tuple.NewTupleKey(rid, "viewer", gid+"#member"),
+				tuple.NewTupleKey(rid, "viewer", tid+"#member"),
+			)
+
+			// Parent, related, sibling, and shadow links
+			if d > 0 {
+				parentRid := fmt.Sprintf("resource:l%ds%d", d-1, b)
+				tuples = append(tuples, tuple.NewTupleKey(rid, "parent", parentRid))
+				tuples = append(tuples, tuple.NewTupleKey(rid, "related", parentRid))
+				tuples = append(tuples, tuple.NewTupleKey(rid, "shadow", parentRid))
+			}
+			if b > 0 {
+				relatedRid := fmt.Sprintf("resource:l%ds%d", d, b-1)
+				tuples = append(tuples, tuple.NewTupleKey(rid, "related", relatedRid))
+				tuples = append(tuples, tuple.NewTupleKey(rid, "sibling", relatedRid))
+				tuples = append(tuples, tuple.NewTupleKey(rid, "shadow", relatedRid))
+			}
+			// Create cycles at various levels
+			if d == depth && b == breadth-1 {
+				tuples = append(tuples, tuple.NewTupleKey(rid, "parent", "resource:l0s0"))
+				tuples = append(tuples, tuple.NewTupleKey(rid, "shadow", "resource:l1s1"))
+			}
+			if d == 2 && b == 2 {
+				tuples = append(tuples, tuple.NewTupleKey(rid, "sibling", "resource:l1s1"))
+			}
+		}
+	}
+
+	// Add wildcard group and team at the deepest level
+	tuples = append(tuples,
+		tuple.NewTupleKey("group:gwild", "member", "user:*"),
+		tuple.NewTupleKey("team:twild", "member", "user:*"),
+		tuple.NewTupleKey("resource:l5s0", "viewer", "group:gwild#member"),
+		tuple.NewTupleKey("resource:l5s0", "viewer", "team:twild#member"),
+	)
+
+	// Explicitly ban some users and groups at various resources and propagate via TTU
+	tuples = append(tuples,
+		tuple.NewTupleKey("resource:l2s1", "banned", "user:d1b2"),
+		tuple.NewTupleKey("resource:l3s2", "banned", "user:d2b1"),
+		tuple.NewTupleKey("resource:l4s1", "banned", "user:d3b2"),
+		tuple.NewTupleKey("resource:l4s2", "banned", "group:g2s2#member"),
+		tuple.NewTupleKey("resource:l5s3", "banned", "team:t2s2#member"),
+	)
+
+	// Add a user who is a member of multiple groups and teams, and is both editor and admin via TTU
+	tuples = append(tuples,
+		tuple.NewTupleKey("group:gwild", "member", "user:complex"),
+		tuple.NewTupleKey("team:twild", "member", "user:complex"),
+		tuple.NewTupleKey("resource:l5s0", "editor", "user:complex"),
+		tuple.NewTupleKey("resource:l5s0", "admin", "user:complex"),
+	)
+
+	// Add a user who is a member of a banned group and team
+	tuples = append(tuples,
+		tuple.NewTupleKey("group:g2s2", "member", "user:trouble"),
+		tuple.NewTupleKey("team:t2s2", "member", "user:trouble"),
+	)
+
+	ctx, checker := newLocalChecker(t, model, tuples...)
+
+	// Test a user at the deepest level, breadth 0, via wildcard group and team
+	checkAllowed(t, ctx, checker, "resource:l5s0", "viewer", "user:someone", true)
+	// user:evil is banned everywhere, but is also a member of group:gwild and team:twild via wildcard, so viewer should be true
+	checkAllowed(t, ctx, checker, "resource:l5s0", "viewer", "user:evil", true)
+
+	// user:complex should be allowed and viewer at l5s0 due to direct and indirect membership and privilege
+	checkAllowed(t, ctx, checker, "resource:l5s0", "allowed", "user:complex", true)
+	checkAllowed(t, ctx, checker, "resource:l5s0", "viewer", "user:complex", true)
+
+	// user:trouble should be banned at l4s2 and l5s3 due to group and team membership
+	checkAllowed(t, ctx, checker, "resource:l4s2", "allowed", "user:trouble", false)
+	checkAllowed(t, ctx, checker, "resource:l5s3", "allowed", "user:trouble", false)
+
+	// user:d1b2 should be banned at l2s1 and any resource that TTUs from it
+	checkAllowed(t, ctx, checker, "resource:l2s1", "allowed", "user:d1b2", false)
+	checkAllowed(t, ctx, checker, "resource:l3s1", "allowed", "user:d1b2", false)
+	checkAllowed(t, ctx, checker, "resource:l4s1", "allowed", "user:d1b2", false)
+
+	// user:d2b1 should be banned at l3s2 and any resource that TTUs from it
+	checkAllowed(t, ctx, checker, "resource:l3s2", "allowed", "user:d2b1", false)
+	checkAllowed(t, ctx, checker, "resource:l4s2", "allowed", "user:d2b1", false)
+
+	// user:d3b2 should be banned at l4s1
+	checkAllowed(t, ctx, checker, "resource:l4s1", "allowed", "user:d3b2", false)
+
+	// user:d0b0 should be allowed at l0s0 (no bans)
+	checkAllowed(t, ctx, checker, "resource:l0s0", "allowed", "user:d0b0", true)
+}
+
+func TestLocalChecker_ExclusionWithWildcardAndTTU(t *testing.T) {
+	model := `
+model
+  schema 1.1
+type doc
+  relations
+    define parent: [doc]
+    define viewer: [user, user:*] or viewer from parent
+    define banned: [user, user:*] or banned from parent
+    define allowed: viewer but not banned
+type user
+`
+	ctx, checker := newLocalChecker(t, model,
+		tuple.NewTupleKey("doc:root", "viewer", "user:*"),
+		tuple.NewTupleKey("doc:child", "parent", "doc:root"),
+		tuple.NewTupleKey("doc:child", "banned", "user:alice"),
+	)
+	// alice is a viewer via wildcard, but banned directly on child
+	checkAllowed(t, ctx, checker, "doc:child", "allowed", "user:alice", false)
+	// bob is a viewer via wildcard, not banned
+	checkAllowed(t, ctx, checker, "doc:child", "allowed", "user:bob", true)
+}
+
+func TestLocalChecker_IntersectionWithTTUAndExclusion(t *testing.T) {
+	model := `
+model
+  schema 1.1
+type repo
+  relations
+    define parent: [repo]
+    define editor: [user] or editor from parent
+    define admin: [user] or admin from parent
+    define banned: [user] or banned from parent
+    define privileged: editor and admin
+    define allowed: privileged but not banned
+type user
+`
+	ctx, checker := newLocalChecker(t, model,
+		tuple.NewTupleKey("repo:root", "editor", "user:alice"),
+		tuple.NewTupleKey("repo:root", "admin", "user:alice"),
+		tuple.NewTupleKey("repo:child", "parent", "repo:root"),
+		tuple.NewTupleKey("repo:child", "banned", "user:alice"),
+	)
+	// alice is privileged via parent, but banned directly on child
+	checkAllowed(t, ctx, checker, "repo:child", "allowed", "user:alice", false)
+	// bob is not privileged
+	checkAllowed(t, ctx, checker, "repo:child", "allowed", "user:bob", false)
+}
+
+func TestLocalChecker_UnionOfRelationsAndDirectTypes(t *testing.T) {
+	model := `
+model
+  schema 1.1
+type asset
+  relations
+    define owner: [user]
+    define group_owner: [group#member]
+    define viewer: [user, group#member] or owner or group_owner
+type group
+  relations
+    define member: [user]
+type user
+`
+	ctx, checker := newLocalChecker(t, model,
+		tuple.NewTupleKey("asset:a1", "owner", "user:alice"),
+		tuple.NewTupleKey("group:g1", "member", "user:bob"),
+		tuple.NewTupleKey("asset:a1", "group_owner", "group:g1#member"),
+	)
+	// alice is owner directly
+	checkAllowed(t, ctx, checker, "asset:a1", "viewer", "user:alice", true)
+	// bob is group_owner via group
+	checkAllowed(t, ctx, checker, "asset:a1", "viewer", "user:bob", true)
+	// carol is not a viewer
+	checkAllowed(t, ctx, checker, "asset:a1", "viewer", "user:carol", false)
+}
+
+func TestLocalChecker_DeepTTUWithIntersectionAndExclusion(t *testing.T) {
+	model := `
+model
+  schema 1.1
+type node
+  relations
+    define parent: [node]
+    define editor: [user] or editor from parent
+    define admin: [user] or admin from parent
+    define banned: [user] or banned from parent
+    define privileged: editor and admin
+    define allowed: privileged but not banned
+type user
+`
+	ctx, checker := newLocalChecker(t, model,
+		tuple.NewTupleKey("node:root", "editor", "user:alice"),
+		tuple.NewTupleKey("node:root", "admin", "user:alice"),
+		tuple.NewTupleKey("node:child", "parent", "node:root"),
+		tuple.NewTupleKey("node:child", "banned", "user:alice"),
+	)
+	// alice is privileged via parent, but banned directly on child
+	checkAllowed(t, ctx, checker, "node:child", "allowed", "user:alice", false)
+	// bob is not privileged
+	checkAllowed(t, ctx, checker, "node:child", "allowed", "user:bob", false)
+}
+
+func TestLocalChecker_UnionOfMultipleUsersetsAndRelations(t *testing.T) {
+	model := `
+model
+  schema 1.1
+type doc
+  relations
+    define editor: [user]
+    define admin: [user]
+    define group_editor: [group#member]
+    define team_admin: [team#member]
+    define viewer: [user, group#member, team#member] or editor or admin or group_editor or team_admin
+type group
+  relations
+    define member: [user]
+type team
+  relations
+    define member: [user]
+type user
+`
+	ctx, checker := newLocalChecker(t, model,
+		tuple.NewTupleKey("doc:1", "editor", "user:alice"),
+		tuple.NewTupleKey("doc:1", "admin", "user:bob"),
+		tuple.NewTupleKey("group:g1", "member", "user:carol"),
+		tuple.NewTupleKey("doc:1", "group_editor", "group:g1#member"),
+		tuple.NewTupleKey("team:t1", "member", "user:dave"),
+		tuple.NewTupleKey("doc:1", "team_admin", "team:t1#member"),
+	)
+	checkAllowed(t, ctx, checker, "doc:1", "viewer", "user:alice", true)
+	checkAllowed(t, ctx, checker, "doc:1", "viewer", "user:bob", true)
+	checkAllowed(t, ctx, checker, "doc:1", "viewer", "user:carol", true)
+	checkAllowed(t, ctx, checker, "doc:1", "viewer", "user:dave", true)
+	checkAllowed(t, ctx, checker, "doc:1", "viewer", "user:eve", false)
+}
+
+func TestLocalChecker_ExclusionWithMultipleTTUs(t *testing.T) {
+	model := `
+model
+  schema 1.1
+type folder
+  relations
+    define parent: [folder]
+    define related: [folder]
+    define banned: [user] or banned from parent or banned from related
+    define viewer: [user] or viewer from parent or viewer from related
+    define allowed: viewer but not banned
+type user
+`
+	ctx, checker := newLocalChecker(t, model,
+		tuple.NewTupleKey("folder:root", "viewer", "user:alice"),
+		tuple.NewTupleKey("folder:child", "parent", "folder:root"),
+		tuple.NewTupleKey("folder:child", "related", "folder:root"),
+		tuple.NewTupleKey("folder:child", "banned", "user:alice"),
+	)
+	// alice is viewer via parent and related, but banned directly on child
+	checkAllowed(t, ctx, checker, "folder:child", "allowed", "user:alice", false)
+	// bob is not a viewer
+	checkAllowed(t, ctx, checker, "folder:child", "allowed", "user:bob", false)
+}
