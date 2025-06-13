@@ -449,8 +449,8 @@ type user
 	)
 	// alice: editor (via wildcard) and admin, not banned
 	checkAllowed(t, ctx, checker, "asset:a1", "viewer", "user:alice", true)
-	// bob: editor (via wildcard), not admin, and banned
-	checkAllowed(t, ctx, checker, "asset:a1", "viewer", "user:bob", false)
+	// bob: editor (via wildcard), not admin, and banned, but is in group:g1 via wildcard
+	checkAllowed(t, ctx, checker, "asset:a1", "viewer", "user:bob", true)
 	// carol: via group membership
 	checkAllowed(t, ctx, checker, "asset:a1", "viewer", "user:carol", true)
 	// dave: via team membership
@@ -530,7 +530,8 @@ type user
 
 	// Test a user at the deepest level, breadth 0
 	checkAllowed(t, ctx, checker, "resource:l10s0", "viewer", "user:d10b00", true) // not present, but wildcard group
-	checkAllowed(t, ctx, checker, "resource:l10s0", "viewer", "user:evil", false)  // banned everywhere
+	// user:evil is banned everywhere, but is also a member of group:gwild via wildcard, so viewer should be true
+	checkAllowed(t, ctx, checker, "resource:l10s0", "viewer", "user:evil", true)
 
 	// Test a user who is editor and admin at every level and breadth
 	for d := 0; d <= depth; d++ {
@@ -654,7 +655,8 @@ type user
 
 	// Test a user at the deepest level, breadth 0, via wildcard group and team
 	checkAllowed(t, ctx, checker, "resource:l6s0", "viewer", "user:someone", true)
-	checkAllowed(t, ctx, checker, "resource:l6s0", "viewer", "user:evil", false) // banned everywhere
+	// user:evil is banned everywhere, but is also a member of group:gwild and team:twild via wildcard, so viewer should be true
+	checkAllowed(t, ctx, checker, "resource:l6s0", "viewer", "user:evil", true)
 
 	// Test a user who is editor and admin at every level and breadth
 	for d := 0; d <= depth; d++ {
@@ -675,12 +677,13 @@ type doc
   relations
     define parent: [doc]
     define related: [doc]
-    define banned: [user] or banned from parent or banned from related
-    define editor: [user] or editor from parent or editor from related
-    define admin: [user] or admin from parent or admin from related
+    define sibling: [doc]
+    define banned: [user] or banned from parent or banned from related or banned from sibling
+    define editor: [user] or editor from parent or editor from related or editor from sibling
+    define admin: [user] or admin from parent or admin from related or admin from sibling
     define privileged: editor and admin
     define allowed: privileged but not banned
-    define viewer: [user, group#member, team#member] or allowed or viewer from parent or viewer from related
+    define viewer: [user, group#member, team#member] or allowed or viewer from parent or viewer from related or viewer from sibling
 type group
   relations
     define member: [user, user:*]
@@ -712,6 +715,14 @@ type user
 			tuple.NewTupleKey(child, "editor", "user:alice"),
 			tuple.NewTupleKey(child, "admin", "user:alice"),
 		)
+		// Add sibling and cycle at the last node
+		if i > 1 {
+			sibling := fmt.Sprintf("doc:n%02d", i-1)
+			tuples = append(tuples, tuple.NewTupleKey(child, "sibling", sibling))
+		}
+		if i == 8 {
+			tuples = append(tuples, tuple.NewTupleKey(child, "parent", "doc:n01"))
+		}
 	}
 
 	ctx, checker := newLocalChecker(t, model, tuples...)
@@ -722,4 +733,108 @@ type user
 	checkAllowed(t, ctx, checker, "doc:n08", "allowed", "user:bob", false)
 	// someone should be allowed via wildcard group/team
 	checkAllowed(t, ctx, checker, "doc:n08", "viewer", "user:someone", true)
+}
+
+func TestLocalChecker_DeepMultiTypeTTUWithCyclesAndExclusions(t *testing.T) {
+	model := `
+model
+  schema 1.1
+type resource
+  relations
+    define parent: [resource]
+    define related: [resource]
+    define sibling: [resource]
+    define banned: [user] or banned from parent or banned from related or banned from sibling
+    define editor: [user] or editor from parent or editor from related or editor from sibling
+    define admin: [user] or admin from parent or admin from related or admin from sibling
+    define privileged: editor and admin
+    define allowed: privileged but not banned
+    define viewer: [user, group#member, team#member] or allowed or viewer from parent or viewer from related or viewer from sibling
+type group
+  relations
+    define member: [user, user:*]
+type team
+  relations
+    define member: [user, group#member]
+type user
+`
+	tuples := []*openfgav1.TupleKey{}
+	depth := 5
+	breadth := 3
+
+	// Create users, groups, teams, and resources with cross-links and cycles
+	for d := 0; d <= depth; d++ {
+		for b := 0; b < breadth; b++ {
+			uid := fmt.Sprintf("user:d%db%d", d, b)
+			rid := fmt.Sprintf("resource:l%ds%d", d, b)
+			gid := fmt.Sprintf("group:g%ds%d", d, b)
+			tid := fmt.Sprintf("team:t%ds%d", d, b)
+
+			// Direct assignments
+			tuples = append(tuples,
+				tuple.NewTupleKey(rid, "editor", uid),
+				tuple.NewTupleKey(rid, "admin", uid),
+				tuple.NewTupleKey(rid, "banned", "user:evil"),
+				tuple.NewTupleKey(gid, "member", uid),
+				tuple.NewTupleKey(tid, "member", uid),
+				tuple.NewTupleKey(rid, "viewer", gid+"#member"),
+				tuple.NewTupleKey(rid, "viewer", tid+"#member"),
+			)
+
+			// Parent, related, and sibling links
+			if d > 0 {
+				parentRid := fmt.Sprintf("resource:l%ds%d", d-1, b)
+				tuples = append(tuples, tuple.NewTupleKey(rid, "parent", parentRid))
+				tuples = append(tuples, tuple.NewTupleKey(rid, "related", parentRid))
+			}
+			if b > 0 {
+				relatedRid := fmt.Sprintf("resource:l%ds%d", d, b-1)
+				tuples = append(tuples, tuple.NewTupleKey(rid, "related", relatedRid))
+				tuples = append(tuples, tuple.NewTupleKey(rid, "sibling", relatedRid))
+			}
+			// Create a cycle at the deepest level
+			if d == depth && b == breadth-1 {
+				tuples = append(tuples, tuple.NewTupleKey(rid, "parent", "resource:l0s0"))
+			}
+		}
+	}
+
+	// Add a wildcard group and team at the deepest level
+	tuples = append(tuples,
+		tuple.NewTupleKey("group:gwild", "member", "user:*"),
+		tuple.NewTupleKey("team:twild", "member", "user:*"),
+		tuple.NewTupleKey("resource:l5s0", "viewer", "group:gwild#member"),
+		tuple.NewTupleKey("resource:l5s0", "viewer", "team:twild#member"),
+	)
+
+	// Explicitly ban user:d2b0 at some resources and propagate via TTU
+	tuples = append(tuples,
+		tuple.NewTupleKey("resource:l3s1", "banned", "user:d2b0"),
+		tuple.NewTupleKey("resource:l4s2", "banned", "user:d2b0"),
+	)
+
+	ctx, checker := newLocalChecker(t, model, tuples...)
+
+	// Test a user at the deepest level, breadth 0, via wildcard group and team
+	checkAllowed(t, ctx, checker, "resource:l5s0", "viewer", "user:someone", true)
+	// user:evil is banned everywhere, but is also a member of group:gwild and team:twild via wildcard, so viewer should be true
+	checkAllowed(t, ctx, checker, "resource:l5s0", "viewer", "user:evil", true)
+
+	// user:d2b0 should be banned at l3s1 and l4s2 and any resource that TTUs from them
+	checkAllowed(t, ctx, checker, "resource:l3s1", "allowed", "user:d2b0", false)
+	checkAllowed(t, ctx, checker, "resource:l4s2", "allowed", "user:d2b0", false)
+	checkAllowed(t, ctx, checker, "resource:l5s1", "allowed", "user:d2b0", false) // TTU from l4s1, which is sibling/related to l4s2
+
+	// user:d2b0 should be allowed at a resource where not banned
+	checkAllowed(t, ctx, checker, "resource:l2s0", "allowed", "user:d2b0", true)
+
+	// Test a user who is editor and admin at every level and breadth
+	for d := 0; d <= depth; d++ {
+		for b := 0; b < breadth; b++ {
+			uid := fmt.Sprintf("user:d%db%d", d, b)
+			rid := fmt.Sprintf("resource:l%ds%d", d, b)
+			checkAllowed(t, ctx, checker, rid, "allowed", uid, true)
+			checkAllowed(t, ctx, checker, rid, "viewer", uid, true)
+		}
+	}
 }
