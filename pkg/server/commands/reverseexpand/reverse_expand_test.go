@@ -1462,7 +1462,144 @@ func TestReverseExpandNew(t *testing.T) {
 			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
 			expectedObjects: []string{"org:a"},
 		},
-		// TODO: W3 on both left and right side
+		{
+			name: "lowest_weight_is_w3_intersection",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type dept
+                  relations
+                    define member: [user]
+				type team
+				  relations
+					define member: [dept#member]
+					define dept_member: [dept#member]
+				type org
+				  relations
+					define team: [team]
+					define member: [team#dept_member] and member from team
+		`,
+			tuples: []string{
+				"dept:a#member@user:bob",
+				"team:a#member@dept:a#member",
+				"team:a#dept_member@dept:a#member",
+				"org:a#member@team:a#dept_member",
+				"org:a#team@team:a",
+				"org:x#member@team:a#dept_member",
+				"org:x#team@team:a",
+				// negative cases
+				"dept:b#member@user:bob",
+				"team:b#member@dept:b#member",
+				"team:b#dept_member@dept:b#member",
+				"org:b#team@team:b",
+				"dept:c#member@user:bob",
+				"team:c#member@dept:c#member",
+				"team:c#dept_member@dept:c#member",
+				"org:c#member@team:c#dept_member",
+				"dept:d#member@user:bob",
+				"team:d#dept_member@dept:d#member",
+				"org:d#member@team:d#dept_member",
+				"org:d#team@team:d",
+			},
+			objectType:      "org",
+			relation:        "member",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:a", "org:x"},
+		},
+		{
+			name: "intersection_one_side_pointing_to_infinite_weight_ttu",
+			model: `model
+				    schema 1.1
+		
+					type user
+					type team
+						relations
+							define parent: [team]
+							define member: [user] or member from parent
+					type org
+						relations
+							define allowed: [user]
+							define member: [team#member] and allowed
+		`,
+			tuples: []string{
+				"team:a#member@user:bob",
+				"team:b#parent@team:a",
+				"team:c#parent@team:b",
+				"org:a#allowed@user:bob",
+				"org:a#member@team:c#member",
+				// negative cases
+				"org:d#member@team:c#member", // allowed is false
+				"org:e#allowed@user:bob",     // no team member
+			},
+			objectType:      "org",
+			relation:        "member",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:a"},
+		},
+		//{
+		// // not working due to infinite weight problem
+		//	name: "intersection_both_side_infinite_weight_ttu",
+		//	model: `model
+		//		    schema 1.1
+		//
+		//			type user
+		//			type team
+		//				relations
+		//					define parent: [team]
+		//					define member: [user] or member from parent
+		//			type org
+		//				relations
+		//					define team: [team]
+		//					define allowed: member from team
+		//					define member: [team#member] and allowed
+		// `,
+		//	tuples: []string{
+		//		"team:a#member@user:bob",
+		//		"team:b#parent@team:a",
+		//		"team:c#parent@team:b",
+		//		"org:a#team@team:c",
+		//		"org:a#member@team:c#member",
+		//		//"org:a#member@user:bob",
+		//		// negative cases
+		//	},
+		//	objectType:      "org",
+		//	relation:        "member",
+		//	user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		//	expectedObjects: []string{"org:a"},
+		//},
+		//{
+		// // TODO: fix bug
+		//	name: "both_side_identical",
+		//	model: `model
+		//		    schema 1.1
+		//
+		//			type user
+		//			type team
+		//				relations
+		//					define parent: [team]
+		//					define member: [user] or member from parent
+		//			type org
+		//				relations
+		//					define team: [team]
+		//					define allowed: member from team
+		//					define foo: member from team
+		//					define member: foo and allowed
+		//`,
+		//	tuples: []string{
+		//		"team:a#member@user:bob",
+		//		"team:b#parent@team:a",
+		//		"team:c#parent@team:b",
+		//		"org:a#team@team:c",
+		//		//"org:a#member@team:c#member",
+		//		//"org:a#member@user:bob",
+		//		// negative cases
+		//	},
+		//	objectType:      "org",
+		//	relation:        "member",
+		//	user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		//	expectedObjects: []string{"org:a"},
+		//},
 		{
 			name: "lowest_weight_is_TTU_intersection_with_intersections",
 			model: `model
@@ -1862,34 +1999,6 @@ func TestReverseExpandNew(t *testing.T) {
 			expectedObjects: []string{"org:a", "org:c"},
 		},
 		{
-			name: "userset_w3",
-			model: `model
-				  schema 1.1
-		
-				type user
-				type dept
-		        relations
-		          define member: [user]
-				type team
-				  relations
-					define member: [user]
-					define dept_member: [dept#member]
-				type org
-				  relations
-					define team: [team]
-					define member: [team#dept_member]
-		`,
-			tuples: []string{
-				"org:a#member@team:a#dept_member",
-				"team:a#dept_member@dept:a#member",
-				"dept:a#member@user:bob",
-			},
-			objectType:      "org",
-			relation:        "member",
-			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
-			expectedObjects: []string{"org:a"},
-		},
-		{
 			name: "lowest_weight_is_TTU_intersection_with_intersections",
 			model: `model
 				  schema 1.1
@@ -1927,6 +2036,9 @@ func TestReverseExpandNew(t *testing.T) {
 			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
 			expectedObjects: []string{"org:a"},
 		},
+		// intersection with ttu recursive
+		// intersection with userset recursive
+		// mix of intersection / exclusion / union
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
