@@ -1567,7 +1567,7 @@ func TestReverseExpandNew(t *testing.T) {
 		//	relation:        "member",
 		//	user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
 		//	expectedObjects: []string{"org:a"},
-		//},
+		// },
 		//{
 		// // TODO: fix bug
 		//	name: "both_side_identical",
