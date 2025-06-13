@@ -1861,6 +1861,7 @@ func (t *TypeSystem) GetLowestEdgesAndTheirSiblingsForIntersection(
 		switch currentNode.GetLabel() {
 		case graph.IntersectionOperator:
 			lowestWeight := 0
+			assigned := false
 
 			for _, edge := range edges {
 				if edge.GetEdgeType() == graph.DirectEdge && hasPathTo(edge, sourceType) {
@@ -1872,6 +1873,7 @@ func (t *TypeSystem) GetLowestEdgesAndTheirSiblingsForIntersection(
 							lowestWeight = weight
 						}
 					}
+					assigned = true
 				}
 			}
 			// TODO: Add UT to test case where there are no direct edges
@@ -1882,10 +1884,11 @@ func (t *TypeSystem) GetLowestEdgesAndTheirSiblingsForIntersection(
 			for _, edge := range edges {
 				if edge.GetEdgeType() != graph.DirectEdge && hasPathTo(edge, sourceType) {
 					if weight, ok := edge.GetWeight(sourceType); ok {
-						if weight < lowestWeight {
+						if weight < lowestWeight || !assigned {
 							lowestEdge = edge
 							lowestWeight = weight
 							directEdgesAreLowest = false
+							assigned = true
 						}
 					}
 				}

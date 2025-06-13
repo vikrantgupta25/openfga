@@ -1537,69 +1537,66 @@ func TestReverseExpandNew(t *testing.T) {
 			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
 			expectedObjects: []string{"org:a"},
 		},
-		//{
-		// // not working due to infinite weight problem
-		//	name: "intersection_both_side_infinite_weight_ttu",
-		//	model: `model
-		//		    schema 1.1
-		//
-		//			type user
-		//			type team
-		//				relations
-		//					define parent: [team]
-		//					define member: [user] or member from parent
-		//			type org
-		//				relations
-		//					define team: [team]
-		//					define allowed: member from team
-		//					define member: [team#member] and allowed
-		// `,
-		//	tuples: []string{
-		//		"team:a#member@user:bob",
-		//		"team:b#parent@team:a",
-		//		"team:c#parent@team:b",
-		//		"org:a#team@team:c",
-		//		"org:a#member@team:c#member",
-		//		//"org:a#member@user:bob",
-		//		// negative cases
-		//	},
-		//	objectType:      "org",
-		//	relation:        "member",
-		//	user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
-		//	expectedObjects: []string{"org:a"},
-		// },
-		//{
-		// // TODO: fix bug
-		//	name: "both_side_identical",
-		//	model: `model
-		//		    schema 1.1
-		//
-		//			type user
-		//			type team
-		//				relations
-		//					define parent: [team]
-		//					define member: [user] or member from parent
-		//			type org
-		//				relations
-		//					define team: [team]
-		//					define allowed: member from team
-		//					define foo: member from team
-		//					define member: foo and allowed
-		//`,
-		//	tuples: []string{
-		//		"team:a#member@user:bob",
-		//		"team:b#parent@team:a",
-		//		"team:c#parent@team:b",
-		//		"org:a#team@team:c",
-		//		//"org:a#member@team:c#member",
-		//		//"org:a#member@user:bob",
-		//		// negative cases
-		//	},
-		//	objectType:      "org",
-		//	relation:        "member",
-		//	user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
-		//	expectedObjects: []string{"org:a"},
-		//},
+		{
+			// not working due to infinite weight problem
+			name: "intersection_both_side_infinite_weight_ttu",
+			model: `model
+				    schema 1.1
+		
+					type user
+					type team
+						relations
+							define parent: [team]
+							define member: [user] or member from parent
+					type org
+						relations
+							define team: [team]
+							define allowed: member from team
+							define member: [team#member] 
+							define foo: member and allowed
+		`,
+			tuples: []string{
+				"team:a#member@user:bob",
+				"team:b#parent@team:a",
+				"team:c#parent@team:b",
+				"org:a#team@team:c",
+				"org:a#member@team:c#member",
+				// "org:a#member@user:bob",
+				// negative cases
+			},
+			objectType:      "org",
+			relation:        "foo",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:a"},
+		},
+		{
+			name: "both_side_identical",
+			model: `model
+				    schema 1.1
+		
+					type user
+					type team
+						relations
+							define parent: [team]
+							define member: [user] or member from parent
+					type org
+						relations
+							define team: [team]
+							define allowed: member from team
+							define foo: member from team
+							define member: foo and allowed
+		`,
+			tuples: []string{
+				"team:a#member@user:bob",
+				"team:b#parent@team:a",
+				"team:c#parent@team:b",
+				"org:a#team@team:c",
+			},
+			objectType:      "org",
+			relation:        "member",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:a"},
+		},
 		{
 			name: "lowest_weight_is_TTU_intersection_with_intersections",
 			model: `model

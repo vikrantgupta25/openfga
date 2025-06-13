@@ -228,13 +228,13 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 				log.Println(toNode.GetUniqueLabel(), toNode.GetLabel())
 				switch toNode.GetLabel() {
 				case "intersection":
-					err := c.intersectionHandler(ctx, req, resultChan, toNode.GetUniqueLabel(), sourceUserType, resolutionMetadata)
+					err := c.intersectionHandler(ctx, r, resultChan, toNode.GetUniqueLabel(), sourceUserType, resolutionMetadata)
 					if err != nil {
 						return err
 					}
 
 				case "exclusion":
-					err := c.exclusionHandler(ctx, req, resultChan, toNode.GetUniqueLabel(), sourceUserType, resolutionMetadata)
+					err := c.exclusionHandler(ctx, r, resultChan, toNode.GetUniqueLabel(), sourceUserType, resolutionMetadata)
 					if err != nil {
 						return err
 					}
@@ -505,6 +505,8 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 			User:             req.User,
 			stack:            req.stack.Copy(),
 			weightedEdge:     req.weightedEdge, // Inherited but not used by the override path
+			ObjectType:       req.ObjectType,
+			Relation:         req.Relation,
 		}
 		return c.shallowClone().loopOverWeightedEdges(ctx, leftHand, newReq, resolutionMetadata, tmpResultChan, sourceUserType)
 	})
@@ -574,6 +576,8 @@ func (c *ReverseExpandQuery) exclusionHandler(ctx context.Context,
 			User:             req.User,
 			stack:            req.stack.Copy(),
 			weightedEdge:     req.weightedEdge, // Inherited but not used by the override path
+			ObjectType:       req.ObjectType,
+			Relation:         req.Relation,
 		}
 		return c.shallowClone().loopOverWeightedEdges(ctx, leftHand, newReq, resolutionMetadata, tmpResultChan, sourceUserType)
 	})
