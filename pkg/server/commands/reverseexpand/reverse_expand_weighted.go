@@ -228,13 +228,7 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 				log.Println(toNode.GetUniqueLabel(), toNode.GetLabel())
 				switch toNode.GetLabel() {
 				case "intersection":
-					intersectionEdgeComparison, err := c.typesystem.GetLowestEdgesAndTheirSiblingsForIntersection(toNode.GetUniqueLabel(), sourceUserType)
-					if err != nil {
-						c.logger.Error("Failed to get edges from weighted graph", zap.Error(err))
-						return err
-					}
-
-					err = c.intersectionHandler(ctx, req, resultChan, intersectionEdgeComparison, resolutionMetadata, sourceUserType)
+					err := c.intersectionHandler(ctx, req, resultChan, toNode.GetUniqueLabel(), sourceUserType, resolutionMetadata)
 					if err != nil {
 						return err
 					}
@@ -482,10 +476,16 @@ func (c *ReverseExpandQuery) queryForTuples(
 func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 	req *ReverseExpandRequest,
 	resultChan chan<- *ReverseExpandResult,
-	intersectionEdgeComparison *typesystem.IntersectionEdgeComparison,
-	resolutionMetadata *ResolutionMetadata,
-	sourceUserType string) error {
+	uniqueLabel string,
+	sourceUserType string,
+	resolutionMetadata *ResolutionMetadata) error {
 	tmpResultChan := make(chan *ReverseExpandResult, 100)
+
+	intersectionEdgeComparison, err := c.typesystem.GetLowestEdgesAndTheirSiblingsForIntersection(uniqueLabel, sourceUserType)
+	if err != nil {
+		c.logger.Error("Failed to get edges from weighted graph", zap.Error(err))
+		return err
+	}
 
 	var leftHand []*weightedGraph.WeightedAuthorizationModelEdge
 	if intersectionEdgeComparison.DirectEdgesAreLeastWeight {
