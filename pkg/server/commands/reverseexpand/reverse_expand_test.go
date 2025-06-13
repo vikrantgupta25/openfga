@@ -924,7 +924,7 @@ func TestReverseExpandNew(t *testing.T) {
 		user            *UserRefObject
 		expectedObjects []string
 	}{
-		//define repo_admin: [user, organization#member]
+		// define repo_admin: [user, organization#member]
 		{
 			name: "simple_ttu",
 			model: `model
@@ -971,7 +971,7 @@ func TestReverseExpandNew(t *testing.T) {
 		`,
 			tuples: []string{
 				"repo:fga#owner@organization:justin_and_zee",
-				//"organization:justin_and_zee#member@user:justin",
+				// "organization:justin_and_zee#member@user:justin",
 				"organization:justin_and_zee#repo_admin@user:justin",
 			},
 			objectType:      "repo",
@@ -1823,15 +1823,14 @@ func TestReverseExpandNew(t *testing.T) {
 			expectedObjects: []string{"org:b"},
 		},
 		//{
-		// // This will not work because the userset w3 is not working
 		//	name: "exclusion_lowest_weight_is_TTU",
 		//	model: `model
 		//		  schema 1.1
 		//
 		//		type user
 		//		type dept
-		//         relations
-		//           define member: [user]
+		//        relations
+		//          define member: [user]
 		//		type team
 		//		  relations
 		//			define member: [user]
@@ -1840,95 +1839,94 @@ func TestReverseExpandNew(t *testing.T) {
 		//		  relations
 		//			define team: [team]
 		//			define member: [team#dept_member] but not member from team
-		// `,
+		//`,
 		//	tuples: []string{
 		//		"org:a#member@team:a#dept_member",
 		//		"team:a#dept_member@dept:a#member",
 		//		"dept:a#member@user:bob",
 		//		// negative case
-		//		//"org:b#member@team:b#dept_member",
-		//		//"team:b#dept_member@dept:b#member",
-		//		//"dept:b#member@user:bob",
-		//		//"org:b#team@team:b",
-		//		//"team:b#member@user:bob",
-		//		//
-		//		//"org:c#member@team:c#dept_member",
-		//		//"team:c#dept_member@dept:c#member",
-		//		//"dept:c#member@user:bob",
-		//		//"org:c#team@team:c",
-		//	},
-		//	objectType:      "org",
-		//	relation:        "member",
-		//	user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
-		//	expectedObjects: []string{"org:a"},
-		// },
-		//{
-		// // This is not working
-		//	name: "userset_w3",
-		//	model: `model
-		//		  schema 1.1
-		//
-		//		type user
-		//		type dept
-		//         relations
-		//           define member: [user]
-		//		type team
-		//		  relations
-		//			define member: [user]
-		//			define dept_member: [dept#member]
-		//		type org
-		//		  relations
-		//			define team: [team]
-		//			define member: [team#dept_member]
-		//`,
-		//	tuples: []string{
-		//		"org:a#member@team:a#dept_member",
-		//		"team:a#dept_member@dept:a#member",
-		//		"dept:a#member@user:bob",
-		//	},
-		//	objectType:      "org",
-		//	relation:        "member",
-		//	user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
-		//	expectedObjects: []string{"org:a"},
-		//},
-		//{
-		//	name: "lowest_weight_is_TTU_intersection_with_intersections",
-		//	model: `model
-		//		  schema 1.1
-		//
-		//		type user
-		//		type dept
-		//          relations
-		//            define member: [user]
-		//		type team
-		//		  relations
-		//			define member: [user]
-		//			define dept_member: [dept#member] and member
-		//		type org
-		//		  relations
-		//			define team: [team]
-		//			define member: [team#dept_member] and member from team
-		//`,
-		//	tuples: []string{
-		//		"team:a#member@user:bob",
-		//		"org:a#team@team:a",
-		//		"org:a#member@team:a#dept_member",
-		//		"team:a#dept_member@dept:a#member",
-		//		"team:a#member@user:bob",
-		//		"dept:a#member@user:bob",
-		//		// these objects should not be found
-		//		"team:b#member@user:bob",
-		//		"org:b#team@team:b",
+		//		"org:b#member@team:b#dept_member",
+		//		"team:b#dept_member@dept:b#member",
 		//		"dept:b#member@user:bob",
+		//		"org:b#team@team:b",
+		//		"team:b#member@user:bob",
+		//
 		//		"org:c#member@team:c#dept_member",
 		//		"team:c#dept_member@dept:c#member",
 		//		"dept:c#member@user:bob",
+		//		"org:c#team@team:c",
 		//	},
 		//	objectType:      "org",
 		//	relation:        "member",
 		//	user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
 		//	expectedObjects: []string{"org:a"},
 		//},
+		{
+			name: "userset_w3",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type dept
+		        relations
+		          define member: [user]
+				type team
+				  relations
+					define member: [user]
+					define dept_member: [dept#member]
+				type org
+				  relations
+					define team: [team]
+					define member: [team#dept_member]
+		`,
+			tuples: []string{
+				"org:a#member@team:a#dept_member",
+				"team:a#dept_member@dept:a#member",
+				"dept:a#member@user:bob",
+			},
+			objectType:      "org",
+			relation:        "member",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:a"},
+		},
+		{
+			name: "lowest_weight_is_TTU_intersection_with_intersections",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type dept
+		         relations
+		           define member: [user]
+				type team
+				  relations
+					define member: [user]
+					define dept_member: [dept#member] and member
+				type org
+				  relations
+					define team: [team]
+					define member: [team#dept_member] and member from team
+		`,
+			tuples: []string{
+				"team:a#member@user:bob",
+				"org:a#team@team:a",
+				"org:a#member@team:a#dept_member",
+				"team:a#dept_member@dept:a#member",
+				"team:a#member@user:bob",
+				"dept:a#member@user:bob",
+				// these objects should not be found
+				"team:b#member@user:bob",
+				"org:b#team@team:b",
+				"dept:b#member@user:bob",
+				"org:c#member@team:c#dept_member",
+				"team:c#dept_member@dept:c#member",
+				"dept:c#member@user:bob",
+			},
+			objectType:      "org",
+			relation:        "member",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:a"},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

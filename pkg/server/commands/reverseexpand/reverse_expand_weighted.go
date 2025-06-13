@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sync"
+	"sync/atomic"
 
 	"go.uber.org/zap"
 
@@ -20,8 +22,6 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"sync"
-	"sync/atomic"
 )
 
 type typeRelEntry struct {
@@ -465,7 +465,6 @@ func (c *ReverseExpandQuery) queryForTuples(
 				wg.Add(1)
 				go queryFunc(qCtx, r.clone(), foundObject)
 			}
-
 		}
 	}
 
