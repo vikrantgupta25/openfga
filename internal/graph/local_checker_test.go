@@ -1375,3 +1375,185 @@ type user
 	// bob: viewer via wildcard, not banned
 	checkAllowed(t, ctx, checker, "folder:child", "allowed", "user:bob", true)
 }
+
+func TestLocalChecker_IntersectionOfTTUsFromDifferentSources(t *testing.T) {
+	model := `
+model
+  schema 1.1
+type folder
+  relations
+    define parent: [folder]
+    define related: [folder]
+    define viewer: [user] or viewer from parent or viewer from related
+    define banned: [user]
+    define allowed: (viewer from parent and viewer from related) but not banned
+type user
+`
+	ctx, checker := newLocalChecker(t, model,
+		tuple.NewTupleKey("folder:root1", "viewer", "user:alice"),
+		tuple.NewTupleKey("folder:root2", "viewer", "user:alice"),
+		tuple.NewTupleKey("folder:child", "parent", "folder:root1"),
+		tuple.NewTupleKey("folder:child", "related", "folder:root2"),
+	)
+	// alice: viewer from parent and related, not banned
+	checkAllowed(t, ctx, checker, "folder:child", "allowed", "user:alice", true)
+	// bob: not a viewer from both sources
+	checkAllowed(t, ctx, checker, "folder:child", "allowed", "user:bob", false)
+}
+
+func TestLocalChecker_IntersectionWithWildcardAndTTU(t *testing.T) {
+	model := `
+model
+  schema 1.1
+type folder
+  relations
+    define parent: [folder]
+    define viewer: [user, user:*] or viewer from parent
+    define banned: [user]
+    define allowed: ([user:*] and viewer from parent) but not banned
+type user
+`
+	ctx, checker := newLocalChecker(t, model,
+		tuple.NewTupleKey("folder:root", "viewer", "user:bob"),
+		tuple.NewTupleKey("folder:child", "parent", "folder:root"),
+		tuple.NewTupleKey("folder:child", "viewer", "user:alice"),
+		tuple.NewTupleKey("folder:child", "allowed", "user:*"),
+	)
+	// bob: viewer from parent and matches wildcard, not banned
+	checkAllowed(t, ctx, checker, "folder:child", "allowed", "user:bob", true)
+	// alice: viewer direct, but not viewer from parent, so not allowed
+	checkAllowed(t, ctx, checker, "folder:child", "allowed", "user:alice", false)
+}
+
+func TestLocalChecker_UnionOfIntersections(t *testing.T) {
+	model := `
+model
+  schema 1.1
+type doc
+  relations
+    define editor: [user]
+    define admin: [user]
+    define reviewer: [user]
+    define banned: [user]
+    define allowed: (editor and admin) or (reviewer but not banned)
+type user
+`
+	ctx, checker := newLocalChecker(t, model,
+		tuple.NewTupleKey("doc:1", "editor", "user:alice"),
+		tuple.NewTupleKey("doc:1", "admin", "user:alice"),
+		tuple.NewTupleKey("doc:1", "reviewer", "user:bob"),
+		tuple.NewTupleKey("doc:1", "banned", "user:carol"),
+		tuple.NewTupleKey("doc:1", "reviewer", "user:carol"),
+	)
+	// alice: editor and admin, so allowed
+	checkAllowed(t, ctx, checker, "doc:1", "allowed", "user:alice", true)
+	// bob: reviewer, not banned, so allowed
+	checkAllowed(t, ctx, checker, "doc:1", "allowed", "user:bob", true)
+	// carol: reviewer but banned, so not allowed
+	checkAllowed(t, ctx, checker, "doc:1", "allowed", "user:carol", false)
+}
+
+func TestLocalChecker_TTUWithIntersectionAsTTUTarget(t *testing.T) {
+	model := `
+model
+  schema 1.1
+type folder
+  relations
+    define parent: [folder]
+    define groupmember: [user]
+    define viewer: ([user] and groupmember) or viewer from parent
+type user
+`
+	ctx, checker := newLocalChecker(t, model,
+		tuple.NewTupleKey("folder:root", "viewer", "user:alice"),
+		tuple.NewTupleKey("folder:root", "groupmember", "user:alice"),
+		tuple.NewTupleKey("folder:child", "parent", "folder:root"),
+	)
+	// alice: user and groupmember on root, so viewer on child via TTU
+	checkAllowed(t, ctx, checker, "folder:child", "viewer", "user:alice", true)
+	// bob: not groupmember
+	checkAllowed(t, ctx, checker, "folder:child", "viewer", "user:bob", false)
+}
+
+func TestLocalChecker_RecursiveBanlistWithMultipleSources(t *testing.T) {
+	model := `
+model
+  schema 1.1
+type folder
+  relations
+    define parent: [folder]
+    define related: [folder]
+    define banned: [user] or banned from parent or banned from related
+    define viewer: [user]
+    define allowed: viewer but not banned
+type user
+`
+	ctx, checker := newLocalChecker(t, model,
+		tuple.NewTupleKey("folder:root1", "banned", "user:alice"),
+		tuple.NewTupleKey("folder:root2", "banned", "user:bob"),
+		tuple.NewTupleKey("folder:child", "parent", "folder:root1"),
+		tuple.NewTupleKey("folder:child", "related", "folder:root2"),
+		tuple.NewTupleKey("folder:child", "viewer", "user:alice"),
+		tuple.NewTupleKey("folder:child", "viewer", "user:bob"),
+	)
+	// alice: banned via parent, not allowed
+	checkAllowed(t, ctx, checker, "folder:child", "allowed", "user:alice", false)
+	// bob: banned via related, not allowed
+	checkAllowed(t, ctx, checker, "folder:child", "allowed", "user:bob", false)
+}
+
+func TestLocalChecker_IntersectionOfThreeRelations(t *testing.T) {
+	model := `
+model
+  schema 1.1
+type doc
+  relations
+    define editor: [user]
+    define admin: [user]
+    define reviewer: [user]
+    define banned: [user]
+    define allowed: (editor and admin and reviewer) but not banned
+type user
+`
+	ctx, checker := newLocalChecker(t, model,
+		tuple.NewTupleKey("doc:1", "editor", "user:alice"),
+		tuple.NewTupleKey("doc:1", "admin", "user:alice"),
+		tuple.NewTupleKey("doc:1", "reviewer", "user:alice"),
+		tuple.NewTupleKey("doc:1", "editor", "user:bob"),
+		tuple.NewTupleKey("doc:1", "admin", "user:bob"),
+		tuple.NewTupleKey("doc:1", "reviewer", "user:carol"),
+	)
+	// alice: editor, admin, reviewer, not banned
+	checkAllowed(t, ctx, checker, "doc:1", "allowed", "user:alice", true)
+	// bob: editor and admin, but not reviewer
+	checkAllowed(t, ctx, checker, "doc:1", "allowed", "user:bob", false)
+	// carol: reviewer only
+	checkAllowed(t, ctx, checker, "doc:1", "allowed", "user:carol", false)
+}
+
+func TestLocalChecker_DeeplyNestedTTUWithIntersectionExclusion(t *testing.T) {
+	model := `
+model
+  schema 1.1
+type folder
+  relations
+    define parent: [folder]
+    define editor: [user] or editor from parent
+    define admin: [user] or admin from parent
+    define banned: [user] or banned from parent
+    define privileged: (editor and admin) or (editor but not banned)
+    define allowed: privileged but not banned
+type user
+`
+	ctx, checker := newLocalChecker(t, model,
+		tuple.NewTupleKey("folder:root", "editor", "user:alice"),
+		tuple.NewTupleKey("folder:root", "admin", "user:alice"),
+		tuple.NewTupleKey("folder:root", "banned", "user:bob"),
+		tuple.NewTupleKey("folder:child", "parent", "folder:root"),
+		tuple.NewTupleKey("folder:child", "editor", "user:bob"),
+	)
+	// alice: privileged via parent, not banned
+	checkAllowed(t, ctx, checker, "folder:child", "allowed", "user:alice", true)
+	// bob: editor on child, banned on root, so not privileged via intersection, but privileged via (editor but not banned) on child, but then excluded by banned on root
+	checkAllowed(t, ctx, checker, "folder:child", "allowed", "user:bob", false)
+}
