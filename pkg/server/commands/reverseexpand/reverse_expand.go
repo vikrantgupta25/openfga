@@ -254,6 +254,9 @@ func WithLogger(logger logger.Logger) ReverseExpandQueryOption {
 	}
 }
 
+// shallowClone creates an identical copy of reverseExpandQuery except
+// candidateObjectsMap as list object candidates need to be validated
+// via check.
 func (c *ReverseExpandQuery) shallowClone() *ReverseExpandQuery {
 	return &ReverseExpandQuery{
 		logger:                         c.logger,

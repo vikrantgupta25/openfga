@@ -24,6 +24,10 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+const (
+	listObjectsResultChannelLength = 100
+)
+
 type typeRelEntry struct {
 	typeRel string // e.g. "organization#admin"
 
@@ -473,28 +477,39 @@ func (c *ReverseExpandQuery) queryForTuples(
 	return errs
 }
 
+// invoke loopOverWeightedEdges to get list objects candidate. Check
+// will then be invoked on the non-lowest weight edges against these
+// list objects candidates. If check returns true, then the list
+// object candidates are true candidates and will be returned via
+// resultChan. If check returns false, then these list object candidates
+// are invalid because it does not satisfy all paths for intersection.
 func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 	req *ReverseExpandRequest,
 	resultChan chan<- *ReverseExpandResult,
 	uniqueLabel string,
 	sourceUserType string,
 	resolutionMetadata *ResolutionMetadata) error {
-	tmpResultChan := make(chan *ReverseExpandResult, 100)
+	tmpResultChan := make(chan *ReverseExpandResult, listObjectsResultChannelLength)
 
 	intersectionEdgeComparison, err := c.typesystem.GetLowestEdgesAndTheirSiblingsForIntersection(uniqueLabel, sourceUserType)
 	if err != nil {
-		c.logger.Error("Failed to get edges from weighted graph", zap.Error(err))
+		c.logger.Error("Failed to get edges from weighted graph",
+			zap.Error(err),
+			zap.String("uniqueLabel", uniqueLabel),
+			zap.String("sourceUserType", sourceUserType))
 		return err
 	}
 
-	var leftHand []*weightedGraph.WeightedAuthorizationModelEdge
+	var lowestWeightEdges []*weightedGraph.WeightedAuthorizationModelEdge
 	if intersectionEdgeComparison.DirectEdgesAreLeastWeight {
-		leftHand = intersectionEdgeComparison.DirectEdges
+		lowestWeightEdges = intersectionEdgeComparison.DirectEdges
 	} else {
-		leftHand = []*weightedGraph.WeightedAuthorizationModelEdge{intersectionEdgeComparison.LowestEdge}
+		lowestWeightEdges = []*weightedGraph.WeightedAuthorizationModelEdge{intersectionEdgeComparison.LowestEdge}
 	}
 
 	pool := concurrency.NewPool(ctx, 2)
+	// getting list object candidates from the lowest weight edge and have its result
+	// pass through tmpResultChan.
 	pool.Go(func(ctx context.Context) error {
 		defer close(tmpResultChan)
 		newReq := &ReverseExpandRequest{
@@ -504,28 +519,35 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 			ContextualTuples: req.ContextualTuples,
 			User:             req.User,
 			stack:            req.stack.Copy(),
-			weightedEdge:     req.weightedEdge, // Inherited but not used by the override path
+			weightedEdge:     req.weightedEdge,
 			ObjectType:       req.ObjectType,
 			Relation:         req.Relation,
 		}
-		return c.shallowClone().loopOverWeightedEdges(ctx, leftHand, newReq, resolutionMetadata, tmpResultChan, sourceUserType)
+		return c.shallowClone().loopOverWeightedEdges(ctx, lowestWeightEdges, newReq, resolutionMetadata, tmpResultChan, sourceUserType)
 	})
 
 	siblings := intersectionEdgeComparison.Siblings
 	usersets := make([]*openfgav1.Userset, 0, len(siblings)+1)
+
 	if !intersectionEdgeComparison.DirectEdgesAreLeastWeight && len(intersectionEdgeComparison.DirectEdges) > 0 {
+		// direct weight is not the lowest edge. Therefore, need to call check against directly assigned types.
 		usersets = append(usersets, typesystem.This())
 	}
 
 	for _, sibling := range siblings {
 		userset, err := c.typesystem.ConstructUserset(ctx, sibling.GetEdgeType(), sibling.GetTo().GetUniqueLabel())
 		if err != nil {
-			return fmt.Errorf("construct userset: %w", err)
+			c.logger.Error("Failed to construct userset for intersectionHandler",
+				zap.Int64("EdgeType", int64(sibling.GetEdgeType())),
+				zap.String("UniqueLabel", sibling.GetTo().GetUniqueLabel()),
+				zap.Error(err))
+			return err
 		}
 		usersets = append(usersets, userset)
 	}
+
+	// Calling check on list objects candidates against non lowest weight edges
 	pool.Go(func(ctx context.Context) error {
-		// fill usersets with the siblings
 		for tmpResult := range tmpResultChan {
 			handlerFunc := c.localCheckResolver.CheckSetOperation(ctx,
 				&graph.ResolveCheckRequest{
@@ -539,14 +561,20 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 				}, graph.IntersectionSetOperator, graph.Intersection, usersets...)
 			tmpCheckResult, err := handlerFunc(ctx)
 			if err != nil {
-				return fmt.Errorf("check set operation: %w", err)
+				c.logger.Error("Failed to execute intersectionHandler", zap.Error(err),
+					zap.String("object", tmpResult.Object),
+					zap.String("relation", req.Relation),
+					zap.String("user", req.User.String()))
+				return err
 			}
 			if tmpCheckResult.GetAllowed() {
+				// check returns true. Hence, candidates are true candidate and can be passed back to its parents.
 				err = c.trySendCandidate(ctx, false, tmpResult.Object, resultChan)
 				if err != nil {
 					return err
 				}
 			}
+			// otherwise, candidates are not true candidate and no need to pass back to its parents.
 		}
 		return nil
 	})
@@ -554,17 +582,26 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 	return pool.Wait()
 }
 
+// invoke loopOverWeightedEdges to get list objects candidate. Check
+// will then be invoked on the excluded edge against these
+// list objects candidates. If check returns false, then the list
+// object candidates are true candidates and will be returned via
+// resultChan. If check returns true, then these list object candidates
+// are invalid because it does not satisfy all paths for exclusion.
 func (c *ReverseExpandQuery) exclusionHandler(ctx context.Context,
 	req *ReverseExpandRequest,
 	resultChan chan<- *ReverseExpandResult,
 	uniqueLabel string,
 	sourceUserType string,
 	resolutionMetadata *ResolutionMetadata) error {
-	leftHand, rightHand, err := c.typesystem.GetLowestWeightEdgeForExclusion(uniqueLabel, sourceUserType)
+	baseEdges, excludedEdge, err := c.typesystem.GetLowestWeightEdgeForExclusion(uniqueLabel, sourceUserType)
 	if err != nil {
-		return fmt.Errorf("get lowest weight edge for exclusion: %w", err)
+		c.logger.Error("Failed to get lowest weight edge for exclusionHandler", zap.Error(err),
+			zap.String("uniqueLabel", uniqueLabel),
+			zap.String("sourceUserType", sourceUserType))
+		return err
 	}
-	tmpResultChan := make(chan *ReverseExpandResult, 100)
+	tmpResultChan := make(chan *ReverseExpandResult, listObjectsResultChannelLength)
 	pool := concurrency.NewPool(ctx, 2)
 	pool.Go(func(ctx context.Context) error {
 		defer close(tmpResultChan)
@@ -579,12 +616,16 @@ func (c *ReverseExpandQuery) exclusionHandler(ctx context.Context,
 			ObjectType:       req.ObjectType,
 			Relation:         req.Relation,
 		}
-		return c.shallowClone().loopOverWeightedEdges(ctx, leftHand, newReq, resolutionMetadata, tmpResultChan, sourceUserType)
+		return c.shallowClone().loopOverWeightedEdges(ctx, baseEdges, newReq, resolutionMetadata, tmpResultChan, sourceUserType)
 	})
 
-	userset, err := c.typesystem.ConstructUserset(ctx, rightHand.GetEdgeType(), rightHand.GetTo().GetUniqueLabel())
+	userset, err := c.typesystem.ConstructUserset(ctx, excludedEdge.GetEdgeType(), excludedEdge.GetTo().GetUniqueLabel())
 	if err != nil {
-		return fmt.Errorf("construct userset: %w", err)
+		c.logger.Error("Failed to construct userset for exclusionHandler",
+			zap.Error(err),
+			zap.Int64("edgeType", int64(excludedEdge.GetEdgeType())),
+			zap.String("uniqueLabel", excludedEdge.GetTo().GetUniqueLabel()))
+		return err
 	}
 	pool.Go(func(ctx context.Context) error {
 		for tmpResult := range tmpResultChan {
@@ -600,7 +641,11 @@ func (c *ReverseExpandQuery) exclusionHandler(ctx context.Context,
 				}, userset)
 			tmpCheckResult, err := handlerFunc(ctx)
 			if err != nil {
-				return fmt.Errorf("check set operation: %w", err)
+				c.logger.Error("Failed to execute exclusionHandler", zap.Error(err),
+					zap.String("object", tmpResult.Object),
+					zap.String("relation", req.Relation),
+					zap.String("user", req.User.String()))
+				return err
 			}
 			if !tmpCheckResult.GetAllowed() {
 				err = c.trySendCandidate(ctx, false, tmpResult.Object, resultChan)

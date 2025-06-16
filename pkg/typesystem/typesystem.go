@@ -1782,6 +1782,8 @@ func (t *TypeSystem) GetEdgesFromWeightedGraph(
 	return relevantEdges, needsCheck, nil
 }
 
+// GetLowestWeightEdgeForExclusion returns the base edges (i.e., edge A in "A but not B") and
+// excluded edge (edge B in "A but not B") based on weighted graph for exclusion.
 func (t *TypeSystem) GetLowestWeightEdgeForExclusion(
 	targetTypeRelation string,
 	sourceType string,
@@ -1827,8 +1829,10 @@ type IntersectionEdgeComparison struct {
 	DirectEdgesAreLeastWeight bool                                    // whether direct edges are the lowest weight edges
 }
 
-// Need function to return the 1) lowest edges (if there are direct edges, all direct edges), 2) other edges that have path to sourceType
-// ([]*graph.WeightedAuthorizationModelEdge /* lowest weight edges*/, []*graph.WeightedAuthorizationModelEdge /* other edges*/, error).
+// GetLowestEdgesAndTheirSiblingsForIntersection returns the lowest weighted edge and
+// its siblings edges for intersection based on result from the weighted edges.
+// If the direct edges have equal weight as its sibling edges, it will choose
+// the direct edges as preference.
 func (t *TypeSystem) GetLowestEdgesAndTheirSiblingsForIntersection(
 	targetTypeRelation string,
 	sourceType string,
@@ -1914,6 +1918,7 @@ func (t *TypeSystem) GetLowestEdgesAndTheirSiblingsForIntersection(
 	}, nil
 }
 
+// ConstructUserset returns the usersets for check against list objects candidate.
 func (t *TypeSystem) ConstructUserset(ctx context.Context, edgeType graph.EdgeType, uniqueLabel string) (*openfgav1.Userset, error) {
 	_, span := tracer.Start(ctx, "typesystem.ConstructUserset")
 	defer span.End()
