@@ -14,6 +14,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/pkg/dispatch"
@@ -1668,6 +1669,28 @@ func TestReverseExpandNew(t *testing.T) {
 			expectedObjects: []string{"org:a"},
 		},
 		{
+			name: "intersection_other_edge_no_connection",
+			model: `model
+				    schema 1.1
+		
+					type user
+					type user2
+					type team
+						relations
+							define member: [user]
+							define member2: [user2]
+							define allowed: member and member2
+		`,
+			tuples: []string{
+				"team:a#member@user:bob",
+				"team:a#member2@user2:bob",
+			},
+			objectType:      "team",
+			relation:        "allowed",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{},
+		},
+		{
 			name: "simple_exclusion",
 			model: `model
 				  schema 1.1
@@ -1687,6 +1710,70 @@ func TestReverseExpandNew(t *testing.T) {
 			relation:        "member",
 			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
 			expectedObjects: []string{"org:b"},
+		},
+		{
+			name: "exclusion_on_itself",
+			model: `model
+					schema 1.1
+		
+				type user
+				type org
+				  relations
+					define banned: [user]
+					define member: banned but not banned
+		`,
+			tuples: []string{
+				"org:a#banned@user:bob",
+			},
+			objectType:      "org",
+			relation:        "member",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{},
+		},
+		{
+			name: "exclusion_no_connection_base",
+			model: `model
+					schema 1.1
+		
+				type user
+				type user2
+				type org
+				  relations
+					define banned: [user2]
+					define member: [user] but not banned
+		`,
+			tuples: []string{
+				"org:a#banned@user:bob",
+				"org:b#member@user:bob",
+				"org:a#member@user:bob",
+				"org:c#banned@user2:bob",
+			},
+			objectType:      "org",
+			relation:        "member",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user2", Id: "bob"}},
+			expectedObjects: []string{},
+		},
+		{
+			name: "exclusion_no_connection_exclusion_path",
+			model: `model
+					schema 1.1
+		
+				type user
+				type user2
+				type org
+				  relations
+					define banned: [user2]
+					define member: [user] but not banned
+		`,
+			tuples: []string{
+				"org:a#banned@user:bob",
+				"org:b#member@user:bob",
+				"org:a#member@user:bob",
+			},
+			objectType:      "org",
+			relation:        "member",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:a", "org:b"},
 		},
 		{
 			name: "simple_exclusion_no_direct_assignment",
@@ -2087,6 +2174,7 @@ func TestReverseExpandNew(t *testing.T) {
 					ds,
 					typesys,
 					WithListObjectOptimizationsEnabled(true),
+					WithCheckResolver(graph.NewLocalChecker()),
 				)
 
 				err = q.Execute(ctx, &ReverseExpandRequest{

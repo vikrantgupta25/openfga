@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"sync"
 	"sync/atomic"
 
@@ -229,15 +228,13 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 					return errs
 				}
 			} else {
-				log.Println(toNode.GetUniqueLabel(), toNode.GetLabel())
 				switch toNode.GetLabel() {
-				case "intersection":
+				case weightedGraph.IntersectionOperator:
 					err := c.intersectionHandler(ctx, r, resultChan, toNode.GetUniqueLabel(), sourceUserType, resolutionMetadata)
 					if err != nil {
 						return err
 					}
-
-				case "exclusion":
+				case weightedGraph.ExclusionOperator:
 					err := c.exclusionHandler(ctx, r, resultChan, toNode.GetUniqueLabel(), sourceUserType, resolutionMetadata)
 					if err != nil {
 						return err
@@ -499,6 +496,11 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 			zap.String("sourceUserType", sourceUserType))
 		return err
 	}
+	if intersectionEdgeComparison == nil {
+		// This means that there are edges with no connection. It can never be
+		// evaluated to true.
+		return nil
+	}
 
 	var lowestWeightEdges []*weightedGraph.WeightedAuthorizationModelEdge
 	if intersectionEdgeComparison.DirectEdgesAreLeastWeight {
@@ -537,7 +539,8 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 	for _, sibling := range siblings {
 		userset, err := c.typesystem.ConstructUserset(ctx, sibling.GetEdgeType(), sibling.GetTo().GetUniqueLabel())
 		if err != nil {
-			c.logger.Error("Failed to construct userset for intersectionHandler",
+			c.logger.Error("Failed to construct userset",
+				zap.String("function", "intersectionHandler"),
 				zap.Int64("EdgeType", int64(sibling.GetEdgeType())),
 				zap.String("UniqueLabel", sibling.GetTo().GetUniqueLabel()),
 				zap.Error(err))
@@ -561,12 +564,14 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 				}, graph.IntersectionSetOperator, graph.Intersection, usersets...)
 			tmpCheckResult, err := handlerFunc(ctx)
 			if err != nil {
-				c.logger.Error("Failed to execute intersectionHandler", zap.Error(err),
+				c.logger.Error("Failed to execute", zap.Error(err),
+					zap.String("function", "intersectionHandler"),
 					zap.String("object", tmpResult.Object),
 					zap.String("relation", req.Relation),
 					zap.String("user", req.User.String()))
 				return err
 			}
+
 			if tmpCheckResult.GetAllowed() {
 				// check returns true. Hence, candidates are true candidate and can be passed back to its parents.
 				err = c.trySendCandidate(ctx, false, tmpResult.Object, resultChan)
@@ -601,6 +606,9 @@ func (c *ReverseExpandQuery) exclusionHandler(ctx context.Context,
 			zap.String("sourceUserType", sourceUserType))
 		return err
 	}
+
+	// We do not have to check whether baseEdges have length 0 because it would have been
+	// thrown out by GetEdgesFromWeightedGraph and this function will not be executed.
 	tmpResultChan := make(chan *ReverseExpandResult, listObjectsResultChannelLength)
 	pool := concurrency.NewPool(ctx, 2)
 	pool.Go(func(ctx context.Context) error {
@@ -621,8 +629,9 @@ func (c *ReverseExpandQuery) exclusionHandler(ctx context.Context,
 
 	userset, err := c.typesystem.ConstructUserset(ctx, excludedEdge.GetEdgeType(), excludedEdge.GetTo().GetUniqueLabel())
 	if err != nil {
-		c.logger.Error("Failed to construct userset for exclusionHandler",
+		c.logger.Error("Failed to construct userset",
 			zap.Error(err),
+			zap.String("function", "exclusionHandler"),
 			zap.Int64("edgeType", int64(excludedEdge.GetEdgeType())),
 			zap.String("uniqueLabel", excludedEdge.GetTo().GetUniqueLabel()))
 		return err
@@ -641,7 +650,8 @@ func (c *ReverseExpandQuery) exclusionHandler(ctx context.Context,
 				}, userset)
 			tmpCheckResult, err := handlerFunc(ctx)
 			if err != nil {
-				c.logger.Error("Failed to execute exclusionHandler", zap.Error(err),
+				c.logger.Error("Failed to execute", zap.Error(err),
+					zap.String("function", "exclusionHandler"),
 					zap.String("object", tmpResult.Object),
 					zap.String("relation", req.Relation),
 					zap.String("user", req.User.String()))

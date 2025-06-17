@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"sync"
 	"sync/atomic"
 
@@ -214,7 +213,7 @@ func NewReverseExpandQuery(ds storage.RelationshipTupleReader, ts *typesystem.Ty
 		query.localCheckResolver = localCheckResolver
 	} else {
 		// this should never happen, use default value as a fallback
-		log.Println("No local check resolver found, using default local checker")
+		query.logger.Error("No local check resolver found, using default local checker")
 		query.localCheckResolver = graph.NewLocalChecker()
 	}
 

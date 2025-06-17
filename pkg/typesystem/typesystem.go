@@ -1800,17 +1800,23 @@ func (t *TypeSystem) GetLowestWeightEdgeForExclusion(
 	}
 
 	// This means we cannot reach the source type requested, so there are no relevant edges.
+	// This should never happen because GetEdgesFromWeightedGraph should have trimmed out all the edges
+	// and the lowest weight edge for exclusion should not have been called.
 	if !hasPathTo(currentNode, sourceType) {
-		return nil, nil, nil
+		return nil, nil, fmt.Errorf("no outgoing edges from node: %s for sourceType %s",
+			currentNode.GetUniqueLabel(),
+			sourceType)
 	}
 
 	edges, ok := wg.GetEdgesFromNode(currentNode)
 	if !ok {
+		// This should never happen
 		return nil, nil, fmt.Errorf("no outgoing edges from node: %s", currentNode.GetUniqueLabel())
 	}
 
 	if currentNode.GetNodeType() != graph.OperatorNode || currentNode.GetLabel() != graph.ExclusionOperator {
-		return nil, nil, fmt.Errorf("node is not an exclusion operator")
+		// This should never happen
+		return nil, nil, fmt.Errorf("node %s is not an exclusion operator", currentNode.GetUniqueLabel())
 	}
 	butNotEdge := edges[len(edges)-1] // this is the edge to 'b'
 	edges = edges[:len(edges)-1]
@@ -1818,7 +1824,7 @@ func (t *TypeSystem) GetLowestWeightEdgeForExclusion(
 	relevantEdges := slices.Collect(filter(edges, func(edge *graph.WeightedAuthorizationModelEdge) bool {
 		return hasPathTo(edge, sourceType)
 	}))
-
+	// TODO: should we trim for relevant in the "but not edge"
 	return relevantEdges, butNotEdge, nil
 }
 
@@ -1833,6 +1839,7 @@ type IntersectionEdgeComparison struct {
 // its siblings edges for intersection based on result from the weighted edges.
 // If the direct edges have equal weight as its sibling edges, it will choose
 // the direct edges as preference.
+// If any of the children are not connected, it will return nil
 func (t *TypeSystem) GetLowestEdgesAndTheirSiblingsForIntersection(
 	targetTypeRelation string,
 	sourceType string,
@@ -1861,6 +1868,7 @@ func (t *TypeSystem) GetLowestEdgesAndTheirSiblingsForIntersection(
 	directEdges := make([]*graph.WeightedAuthorizationModelEdge, 0, len(edges))
 	var lowestEdge *graph.WeightedAuthorizationModelEdge
 	directEdgesAreLowest := false
+	hasDirectEdges := false
 	if currentNode.GetNodeType() == graph.OperatorNode {
 		switch currentNode.GetLabel() {
 		case graph.IntersectionOperator:
@@ -1868,20 +1876,26 @@ func (t *TypeSystem) GetLowestEdgesAndTheirSiblingsForIntersection(
 			assigned := false
 
 			for _, edge := range edges {
-				if edge.GetEdgeType() == graph.DirectEdge && hasPathTo(edge, sourceType) {
-					directEdges = append(directEdges, edge)
+				if edge.GetEdgeType() == graph.DirectEdge {
+					hasDirectEdges = true
+					if hasPathTo(edge, sourceType) {
+						directEdges = append(directEdges, edge)
 
-					directEdgesAreLowest = true
-					if weight, ok := edge.GetWeight(sourceType); ok {
-						if weight > lowestWeight {
-							lowestWeight = weight
+						directEdgesAreLowest = true
+						if weight, ok := edge.GetWeight(sourceType); ok {
+							if weight > lowestWeight {
+								lowestWeight = weight
+							}
 						}
+						assigned = true
 					}
-					assigned = true
 				}
 			}
-			// TODO: Add UT to test case where there are no direct edges
 			if len(directEdges) == 0 {
+				// it is assumed that the direct edges are always assigned first
+				if hasDirectEdges {
+					return nil, nil
+				}
 				lowestWeight = math.MaxInt32
 			}
 
@@ -1898,15 +1912,19 @@ func (t *TypeSystem) GetLowestEdgesAndTheirSiblingsForIntersection(
 				}
 			}
 		default:
-			// TODO
+			return nil, fmt.Errorf("node %s is not an intersection operator", currentNode.GetUniqueLabel())
 		}
 	}
 
 	siblings := make([]*graph.WeightedAuthorizationModelEdge, 0, len(edges))
 
 	for _, edge := range edges {
-		if !slices.Contains(directEdges, edge) && edge != lowestEdge && hasPathTo(edge, sourceType) {
-			siblings = append(siblings, edge)
+		if !slices.Contains(directEdges, edge) && edge != lowestEdge {
+			if hasPathTo(edge, sourceType) {
+				siblings = append(siblings, edge)
+			} else {
+				return nil, nil
+			}
 		}
 	}
 
