@@ -290,6 +290,7 @@ func (c *ReverseExpandQuery) Execute(
 	resultChan chan<- *ReverseExpandResult,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
+	ctx = storage.ContextWithRelationshipTupleReader(ctx, c.datastore)
 	err := c.execute(ctx, req, resultChan, false, resolutionMetadata)
 	if err != nil {
 		return err

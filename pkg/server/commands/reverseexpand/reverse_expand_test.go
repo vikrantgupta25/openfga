@@ -1170,9 +1170,10 @@ func TestReverseExpandNew(t *testing.T) {
 				  schema 1.1
 		
 				type user
+				type user2
 				type org
 				  relations
-					define allowed: [user]
+					define allowed: [user, user2]
 					define member: [user] and allowed
 		`,
 			tuples: []string{
