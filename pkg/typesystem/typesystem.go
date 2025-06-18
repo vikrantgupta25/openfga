@@ -1814,10 +1814,6 @@ func (t *TypeSystem) GetLowestWeightEdgeForExclusion(
 		return nil, nil, fmt.Errorf("no outgoing edges from node: %s", currentNode.GetUniqueLabel())
 	}
 
-	if currentNode.GetNodeType() != graph.OperatorNode || currentNode.GetLabel() != graph.ExclusionOperator {
-		// This should never happen
-		return nil, nil, fmt.Errorf("node %s is not an exclusion operator", currentNode.GetUniqueLabel())
-	}
 	butNotEdge := edges[len(edges)-1] // this is the edge to 'b'
 	edges = edges[:len(edges)-1]
 	// Filter to only return edges which have a path to the sourceType
@@ -1839,7 +1835,7 @@ type IntersectionEdgeComparison struct {
 // its siblings edges for intersection based on result from the weighted edges.
 // If the direct edges have equal weight as its sibling edges, it will choose
 // the direct edges as preference.
-// If any of the children are not connected, it will return nil
+// If any of the children are not connected, it will return nil.
 func (t *TypeSystem) GetLowestEdgesAndTheirSiblingsForIntersection(
 	targetTypeRelation string,
 	sourceType string,
@@ -1869,60 +1865,56 @@ func (t *TypeSystem) GetLowestEdgesAndTheirSiblingsForIntersection(
 	var lowestEdge *graph.WeightedAuthorizationModelEdge
 	directEdgesAreLowest := false
 	hasDirectEdges := false
-	if currentNode.GetNodeType() == graph.OperatorNode {
-		switch currentNode.GetLabel() {
-		case graph.IntersectionOperator:
-			lowestWeight := 0
-			assigned := false
 
-			for _, edge := range edges {
-				if edge.GetEdgeType() == graph.DirectEdge {
-					hasDirectEdges = true
-					if hasPathTo(edge, sourceType) {
-						directEdges = append(directEdges, edge)
+	lowestWeight := 0
+	assigned := false
 
-						directEdgesAreLowest = true
-						if weight, ok := edge.GetWeight(sourceType); ok {
-							if weight > lowestWeight {
-								lowestWeight = weight
-							}
-						}
-						assigned = true
+	for _, edge := range edges {
+		if edge.GetEdgeType() == graph.DirectEdge {
+			hasDirectEdges = true
+			if hasPathTo(edge, sourceType) {
+				directEdges = append(directEdges, edge)
+
+				directEdgesAreLowest = true
+				if weight, ok := edge.GetWeight(sourceType); ok {
+					if weight > lowestWeight {
+						lowestWeight = weight
 					}
 				}
+				assigned = true
 			}
-			if len(directEdges) == 0 {
-				// it is assumed that the direct edges are always assigned first
-				if hasDirectEdges {
-					return nil, nil
-				}
-				lowestWeight = math.MaxInt32
-			}
+		}
+	}
+	if len(directEdges) == 0 {
+		// it is assumed that the direct edges are always assigned first
+		if hasDirectEdges {
+			// in reality, should not happen because the edge should be trimmed
+			return nil, nil
+		}
+		lowestWeight = math.MaxInt32
+	}
 
-			for _, edge := range edges {
-				if edge.GetEdgeType() != graph.DirectEdge && hasPathTo(edge, sourceType) {
-					if weight, ok := edge.GetWeight(sourceType); ok {
-						if weight < lowestWeight || !assigned {
-							lowestEdge = edge
-							lowestWeight = weight
-							directEdgesAreLowest = false
-							assigned = true
-						}
-					}
+	for _, edge := range edges {
+		if edge.GetEdgeType() != graph.DirectEdge && hasPathTo(edge, sourceType) {
+			if weight, ok := edge.GetWeight(sourceType); ok {
+				if weight < lowestWeight || !assigned {
+					lowestEdge = edge
+					lowestWeight = weight
+					directEdgesAreLowest = false
+					assigned = true
 				}
 			}
-		default:
-			return nil, fmt.Errorf("node %s is not an intersection operator", currentNode.GetUniqueLabel())
 		}
 	}
 
 	siblings := make([]*graph.WeightedAuthorizationModelEdge, 0, len(edges))
 
 	for _, edge := range edges {
-		if !slices.Contains(directEdges, edge) && edge != lowestEdge {
+		if edge.GetEdgeType() != graph.DirectEdge && edge != lowestEdge {
 			if hasPathTo(edge, sourceType) {
 				siblings = append(siblings, edge)
 			} else {
+				// In reality, should never happen because the edge is trimmed
 				return nil, nil
 			}
 		}

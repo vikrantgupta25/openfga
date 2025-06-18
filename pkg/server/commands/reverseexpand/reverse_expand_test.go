@@ -1671,21 +1671,44 @@ func TestReverseExpandNew(t *testing.T) {
 		{
 			name: "intersection_other_edge_no_connection",
 			model: `model
-				    schema 1.1
-		
+					  schema 1.1
+
 					type user
 					type user2
-					type team
-						relations
-							define member: [user]
-							define member2: [user2]
-							define allowed: member and member2
+
+					type group
+  						relations
+    						define allowed: member and member2
+    						define member: [user, user2]
+    						define member2: [user2]
 		`,
 			tuples: []string{
-				"team:a#member@user:bob",
-				"team:a#member2@user2:bob",
+				"group:a#member@user:bob",
+				"group:a#member2@user2:bob",
 			},
-			objectType:      "team",
+			objectType:      "group",
+			relation:        "allowed",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{},
+		},
+		{
+			name: "direct_edge_no_connection",
+			model: `model
+					  schema 1.1
+
+					type user
+					type user2
+
+					type group
+  						relations
+    						define allowed: [user2] and member
+    						define member: [user, user2]
+		`,
+			tuples: []string{
+				"group:a#member@user:bob",
+				"group:a#allowed@user2:bob",
+			},
+			objectType:      "group",
 			relation:        "allowed",
 			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
 			expectedObjects: []string{},

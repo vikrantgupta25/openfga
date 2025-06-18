@@ -609,6 +609,8 @@ func (c *ReverseExpandQuery) exclusionHandler(ctx context.Context,
 
 	// We do not have to check whether baseEdges have length 0 because it would have been
 	// thrown out by GetEdgesFromWeightedGraph and this function will not be executed.
+	// In any case, if the baseEdges have 0 length, the loopOverWeightedEdges will be noop
+	// and return quickly.
 	tmpResultChan := make(chan *ReverseExpandResult, listObjectsResultChannelLength)
 	pool := concurrency.NewPool(ctx, 2)
 	pool.Go(func(ctx context.Context) error {

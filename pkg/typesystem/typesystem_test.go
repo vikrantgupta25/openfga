@@ -7227,9 +7227,30 @@ func TestGetLowestWeightEdgeForExclusion(t *testing.T) {
 		require.Equal(t, graph.DirectEdge, baseEdges[0].GetEdgeType())
 
 		require.NotNil(t, exclusionEdge)
-		require.Equal(t, "group#banned", exclusionEdge.GetTo().GetLabel())
+		require.Equal(t, "group#banned", exclusionEdge.GetTo().GetUniqueLabel())
 		require.Equal(t, graph.SpecificTypeAndRelation, exclusionEdge.GetTo().GetNodeType())
 		require.Equal(t, graph.RewriteEdge, exclusionEdge.GetEdgeType())
+	})
+
+	t.Run("direct_edges_not_connected", func(t *testing.T) {
+		model := `
+		model
+			schema 1.1
+		type user
+		type user2
+		type user3
+		type group
+			relations
+				define banned: [user]
+				define not_relation: [user2, user3] but not banned
+		`
+		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+
+		edges, _, err := typeSystem.GetEdgesFromWeightedGraph("group#not_relation", "user")
+		require.NoError(t, err)
+
+		require.Empty(t, edges)
 	})
 
 	t.Run("multiple_direct_edges_for_exclusion", func(t *testing.T) {
@@ -7269,7 +7290,7 @@ func TestGetLowestWeightEdgeForExclusion(t *testing.T) {
 		require.Equal(t, graph.DirectEdge, baseEdges[2].GetEdgeType())
 
 		require.NotNil(t, exclusionEdge)
-		require.Equal(t, "group#banned", exclusionEdge.GetTo().GetLabel())
+		require.Equal(t, "group#banned", exclusionEdge.GetTo().GetUniqueLabel())
 		require.Equal(t, graph.SpecificTypeAndRelation, exclusionEdge.GetTo().GetNodeType())
 		require.Equal(t, graph.RewriteEdge, exclusionEdge.GetEdgeType())
 	})
@@ -7301,7 +7322,7 @@ func TestGetLowestWeightEdgeForExclusion(t *testing.T) {
 		require.Equal(t, graph.SpecificTypeAndRelation, baseEdges[0].GetTo().GetNodeType())
 		require.Equal(t, graph.RewriteEdge, baseEdges[0].GetEdgeType())
 		require.NotNil(t, exclusionEdge)
-		require.Equal(t, "group#banned", exclusionEdge.GetTo().GetLabel())
+		require.Equal(t, "group#banned", exclusionEdge.GetTo().GetUniqueLabel())
 		require.Equal(t, graph.SpecificTypeAndRelation, exclusionEdge.GetTo().GetNodeType())
 		require.Equal(t, graph.RewriteEdge, exclusionEdge.GetEdgeType())
 	})
@@ -7336,7 +7357,7 @@ func TestGetLowestWeightEdgeForExclusion(t *testing.T) {
 		require.Equal(t, graph.SpecificTypeAndRelation, baseEdges[0].GetTo().GetNodeType())
 		require.NotNil(t, exclusionEdge)
 		require.Equal(t, graph.TTUEdge, exclusionEdge.GetEdgeType())
-		require.Equal(t, "team#member", exclusionEdge.GetTo().GetLabel())
+		require.Equal(t, "team#member", exclusionEdge.GetTo().GetUniqueLabel())
 		require.Equal(t, graph.SpecificTypeAndRelation, exclusionEdge.GetTo().GetNodeType())
 	})
 	t.Run("nested_exclusion_edge", func(t *testing.T) {
@@ -7426,29 +7447,6 @@ func TestGetLowestWeightEdgeForExclusion(t *testing.T) {
 		_, _, err = typeSystem.GetLowestWeightEdgeForExclusion(rootExclusionNode.GetUniqueLabel(), "user2")
 		require.Error(t, err)
 	})
-	t.Run("non_exclusion_node", func(t *testing.T) {
-		model := `
-		model
-			schema 1.1
-		type user
-		type user2
-		type team
-			relations
-				define member: [user]
-		type group
-			relations
-				define banned_user: [user]
-				define banned_team: [team]
-				define member: [user]
-				define not_relation: member but not (banned_user or member from banned_team)
-		`
-		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
-		require.NoError(t, err)
-
-		_, _, err = typeSystem.GetLowestWeightEdgeForExclusion("team#member", "user")
-		require.Error(t, err)
-	})
-
 }
 
 func TestGetLowestEdgesAndTheirSiblingsForIntersection(t *testing.T) {
@@ -7500,7 +7498,7 @@ func TestGetLowestEdgesAndTheirSiblingsForIntersection(t *testing.T) {
 			relations
 				define parent: [team]
 				define allowed: [user]
-				define member: [user, user:*, user2] and allowed and member2 from parent and member from parent and member3 from parent
+				define member: [user, user:*, user2] and allowed and member from parent and member3 from parent
 		`
 		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
 		require.NoError(t, err)
@@ -7590,7 +7588,7 @@ func TestGetLowestEdgesAndTheirSiblingsForIntersection(t *testing.T) {
 			relations
 				define subteam: [subteam]
 				define adhoc_member: [adhoc#member]
-				define member: [team#member] and member from subteam and adhoc_member
+				define member: [team#member, user, user:*] and member from subteam and adhoc_member
 		`
 		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
 		require.NoError(t, err)
@@ -7609,9 +7607,16 @@ func TestGetLowestEdgesAndTheirSiblingsForIntersection(t *testing.T) {
 		require.NotNil(t, comparator.LowestEdge)
 		require.Equal(t, graph.TTUEdge, comparator.LowestEdge.GetEdgeType())
 		require.Equal(t, "subteam#member", comparator.LowestEdge.GetTo().GetUniqueLabel())
-		require.Len(t, comparator.DirectEdges, 1)
+		require.Len(t, comparator.DirectEdges, 3)
 		require.Equal(t, "team#member", comparator.DirectEdges[0].GetTo().GetUniqueLabel())
 		require.Equal(t, graph.DirectEdge, comparator.DirectEdges[0].GetEdgeType())
+		require.Equal(t, graph.SpecificTypeAndRelation, comparator.DirectEdges[0].GetTo().GetNodeType())
+		require.Equal(t, "user", comparator.DirectEdges[1].GetTo().GetUniqueLabel())
+		require.Equal(t, graph.DirectEdge, comparator.DirectEdges[1].GetEdgeType())
+		require.Equal(t, graph.SpecificType, comparator.DirectEdges[1].GetTo().GetNodeType())
+		require.Equal(t, "user:*", comparator.DirectEdges[2].GetTo().GetUniqueLabel())
+		require.Equal(t, graph.DirectEdge, comparator.DirectEdges[2].GetEdgeType())
+		require.Equal(t, graph.SpecificTypeWildcard, comparator.DirectEdges[2].GetTo().GetNodeType())
 		require.Len(t, comparator.Siblings, 1)
 		require.Equal(t, "group#adhoc_member", comparator.Siblings[0].GetTo().GetUniqueLabel())
 		require.Equal(t, graph.RewriteEdge, comparator.Siblings[0].GetEdgeType())
@@ -7697,9 +7702,7 @@ func TestGetLowestEdgesAndTheirSiblingsForIntersection(t *testing.T) {
 		require.Equal(t, graph.OperatorNode, rootExclusionNode.GetNodeType())
 		comparator, err := typeSystem.GetLowestEdgesAndTheirSiblingsForIntersection(rootExclusionNode.GetUniqueLabel(), "user")
 		require.NoError(t, err)
-		require.NotNil(t, comparator)
-		require.False(t, comparator.DirectEdgesAreLeastWeight)
-		require.Empty(t, comparator.LowestEdge)
+		require.Nil(t, comparator)
 	})
 
 	t.Run("nested_operator", func(t *testing.T) {
@@ -7744,6 +7747,153 @@ func TestGetLowestEdgesAndTheirSiblingsForIntersection(t *testing.T) {
 		require.Len(t, comparator.Siblings, 1)
 		require.Equal(t, graph.OperatorNode, comparator.Siblings[0].GetTo().GetNodeType())
 		require.Equal(t, graph.RewriteEdge, comparator.Siblings[0].GetEdgeType())
+		require.Equal(t, graph.IntersectionOperator, comparator.Siblings[0].GetTo().GetLabel())
+	})
+}
+
+func TestConstructUserset(t *testing.T) {
+	t.Run("rewrite_edge", func(t *testing.T) {
+		model := `
+		model
+			schema 1.1
+		type user
+		type user2
+		type group
+			relations
+				define banned: [user]
+				define not_relation: [user, user2] but not banned
+		`
+		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+		userset, err := typeSystem.ConstructUserset(context.Background(), graph.RewriteEdge, "group#banned")
+		require.NoError(t, err)
+		require.Equal(t, &openfgav1.Userset{
+			Userset: &openfgav1.Userset_ComputedUserset{
+				ComputedUserset: &openfgav1.ObjectRelation{
+					Relation: "banned",
+				},
+			},
+		}, userset)
+	})
+	t.Run("ttu_edge", func(t *testing.T) {
+		model := `
+		model
+			schema 1.1
+		type user
+		type team
+			relations
+				define member: [user]
+		type group
+			relations
+				define banned_team: [team]
+				define member: [user]
+				define not_relation: member but not member from banned_team
+		`
+		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+		userset, err := typeSystem.ConstructUserset(context.Background(), graph.TTUEdge, "team#member")
+		require.NoError(t, err)
+		require.Equal(t, &openfgav1.Userset{
+			Userset: &openfgav1.Userset_TupleToUserset{
+				TupleToUserset: &openfgav1.TupleToUserset{
+					Tupleset: &openfgav1.ObjectRelation{
+						Relation: "team",
+					},
+					ComputedUserset: &openfgav1.ObjectRelation{
+						Relation: "member",
+					},
+				},
+			},
+		}, userset)
+	})
+	t.Run("direct_assignment_userset", func(t *testing.T) {
+		model := `
+		model
+			schema 1.1
+		type user
+		type subteam
+			relations
+				define member: [user]
+		type adhoc
+			relations
+				define member: [user]
+		type team
+			relations
+				define member: [subteam#member]
+		type group
+			relations
+				define subteam: [subteam]
+				define adhoc_member: [adhoc#member]
+				define member: [team#member, user, user:*] and member from subteam and adhoc_member
+`
+		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+		userset, err := typeSystem.ConstructUserset(context.Background(), graph.DirectEdge, "team#member")
+		require.NoError(t, err)
+		require.Equal(t, &openfgav1.Userset{
+			Userset: &openfgav1.Userset_TupleToUserset{
+				TupleToUserset: &openfgav1.TupleToUserset{
+					Tupleset: &openfgav1.ObjectRelation{
+						Relation: "team",
+					},
+					ComputedUserset: &openfgav1.ObjectRelation{
+						Relation: "member",
+					},
+				},
+			},
+		}, userset)
+	})
+	t.Run("direct_assignment_specific_type", func(t *testing.T) {
+		model := `
+		model
+			schema 1.1
+		type user
+		type subteam
+			relations
+				define member: [user]
+		type adhoc
+			relations
+				define member: [user]
+		type team
+			relations
+				define member: [subteam#member]
+		type group
+			relations
+				define subteam: [subteam]
+				define adhoc_member: [adhoc#member]
+				define member: [team#member, user, user:*] and member from subteam and adhoc_member
+`
+		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+		userset, err := typeSystem.ConstructUserset(context.Background(), graph.DirectEdge, "user")
+		require.NoError(t, err)
+		require.Equal(t, This(), userset)
+	})
+	t.Run("direct_assignment_specific_type_public_wildcard", func(t *testing.T) {
+		model := `
+		model
+			schema 1.1
+		type user
+		type subteam
+			relations
+				define member: [user]
+		type adhoc
+			relations
+				define member: [user]
+		type team
+			relations
+				define member: [subteam#member]
+		type group
+			relations
+				define subteam: [subteam]
+				define adhoc_member: [adhoc#member]
+				define member: [team#member, user, user:*] and member from subteam and adhoc_member
+`
+		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+		userset, err := typeSystem.ConstructUserset(context.Background(), graph.DirectEdge, "user:*")
+		require.NoError(t, err)
+		require.Equal(t, This(), userset)
 	})
 }
 
