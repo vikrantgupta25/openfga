@@ -496,17 +496,16 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 			zap.String("sourceUserType", sourceUserType))
 		return err
 	}
-	if intersectionEdgeComparison == nil {
-		// This means that there are edges with no connection. It can never be
-		// evaluated to true.
-		return nil
-	}
 
 	var lowestWeightEdges []*weightedGraph.WeightedAuthorizationModelEdge
 	if intersectionEdgeComparison.DirectEdgesAreLeastWeight {
 		lowestWeightEdges = intersectionEdgeComparison.DirectEdges
 	} else {
 		lowestWeightEdges = []*weightedGraph.WeightedAuthorizationModelEdge{intersectionEdgeComparison.LowestEdge}
+	}
+	if len(lowestWeightEdges) == 0 {
+		// no need to go further because list objects must return empty
+		return nil
 	}
 
 	pool := concurrency.NewPool(ctx, 2)

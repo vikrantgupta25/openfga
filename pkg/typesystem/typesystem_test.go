@@ -7472,7 +7472,6 @@ func TestGetLowestEdgesAndTheirSiblingsForIntersection(t *testing.T) {
 		require.Equal(t, graph.OperatorNode, rootExclusionNode.GetNodeType())
 		comparator, err := typeSystem.GetLowestEdgesAndTheirSiblingsForIntersection(rootExclusionNode.GetUniqueLabel(), "user")
 		require.NoError(t, err)
-		require.NotNil(t, comparator)
 		require.True(t, comparator.DirectEdgesAreLeastWeight)
 		require.Nil(t, comparator.LowestEdge)
 		require.Len(t, comparator.DirectEdges, 1)
@@ -7512,7 +7511,6 @@ func TestGetLowestEdgesAndTheirSiblingsForIntersection(t *testing.T) {
 		require.Equal(t, graph.OperatorNode, rootExclusionNode.GetNodeType())
 		comparator, err := typeSystem.GetLowestEdgesAndTheirSiblingsForIntersection(rootExclusionNode.GetUniqueLabel(), "user")
 		require.NoError(t, err)
-		require.NotNil(t, comparator)
 		require.True(t, comparator.DirectEdgesAreLeastWeight)
 		require.Nil(t, comparator.LowestEdge)
 		require.Len(t, comparator.DirectEdges, 2)
@@ -7557,7 +7555,6 @@ func TestGetLowestEdgesAndTheirSiblingsForIntersection(t *testing.T) {
 		require.Equal(t, graph.OperatorNode, rootExclusionNode.GetNodeType())
 		comparator, err := typeSystem.GetLowestEdgesAndTheirSiblingsForIntersection(rootExclusionNode.GetUniqueLabel(), "user")
 		require.NoError(t, err)
-		require.NotNil(t, comparator)
 		require.False(t, comparator.DirectEdgesAreLeastWeight)
 		require.NotNil(t, comparator.LowestEdge)
 		require.Equal(t, graph.RewriteEdge, comparator.LowestEdge.GetEdgeType())
@@ -7602,7 +7599,6 @@ func TestGetLowestEdgesAndTheirSiblingsForIntersection(t *testing.T) {
 		require.Equal(t, graph.OperatorNode, rootExclusionNode.GetNodeType())
 		comparator, err := typeSystem.GetLowestEdgesAndTheirSiblingsForIntersection(rootExclusionNode.GetUniqueLabel(), "user")
 		require.NoError(t, err)
-		require.NotNil(t, comparator)
 		require.False(t, comparator.DirectEdgesAreLeastWeight)
 		require.NotNil(t, comparator.LowestEdge)
 		require.Equal(t, graph.TTUEdge, comparator.LowestEdge.GetEdgeType())
@@ -7655,7 +7651,6 @@ func TestGetLowestEdgesAndTheirSiblingsForIntersection(t *testing.T) {
 		require.Equal(t, graph.OperatorNode, rootExclusionNode.GetNodeType())
 		comparator, err := typeSystem.GetLowestEdgesAndTheirSiblingsForIntersection(rootExclusionNode.GetUniqueLabel(), "user")
 		require.NoError(t, err)
-		require.NotNil(t, comparator)
 		require.False(t, comparator.DirectEdgesAreLeastWeight)
 		require.NotNil(t, comparator.LowestEdge)
 		require.Equal(t, graph.RewriteEdge, comparator.LowestEdge.GetEdgeType())
@@ -7702,7 +7697,7 @@ func TestGetLowestEdgesAndTheirSiblingsForIntersection(t *testing.T) {
 		require.Equal(t, graph.OperatorNode, rootExclusionNode.GetNodeType())
 		comparator, err := typeSystem.GetLowestEdgesAndTheirSiblingsForIntersection(rootExclusionNode.GetUniqueLabel(), "user")
 		require.NoError(t, err)
-		require.Nil(t, comparator)
+		require.Equal(t, IntersectionEdgeComparison{}, comparator)
 	})
 
 	t.Run("nested_operator", func(t *testing.T) {
@@ -7738,7 +7733,6 @@ func TestGetLowestEdgesAndTheirSiblingsForIntersection(t *testing.T) {
 		require.Equal(t, graph.OperatorNode, rootExclusionNode.GetNodeType())
 		comparator, err := typeSystem.GetLowestEdgesAndTheirSiblingsForIntersection(rootExclusionNode.GetUniqueLabel(), "user")
 		require.NoError(t, err)
-		require.NotNil(t, comparator)
 		require.False(t, comparator.DirectEdgesAreLeastWeight)
 		require.NotNil(t, comparator.LowestEdge)
 		require.Equal(t, graph.TTUEdge, comparator.LowestEdge.GetEdgeType())
@@ -7831,14 +7825,10 @@ func TestConstructUserset(t *testing.T) {
 		userset, err := typeSystem.ConstructUserset(context.Background(), graph.DirectEdge, "team#member")
 		require.NoError(t, err)
 		require.Equal(t, &openfgav1.Userset{
-			Userset: &openfgav1.Userset_TupleToUserset{
-				TupleToUserset: &openfgav1.TupleToUserset{
-					Tupleset: &openfgav1.ObjectRelation{
-						Relation: "team",
-					},
-					ComputedUserset: &openfgav1.ObjectRelation{
-						Relation: "member",
-					},
+			Userset: &openfgav1.Userset_ComputedUserset{
+				ComputedUserset: &openfgav1.ObjectRelation{
+					Object:   "team",
+					Relation: "member",
 				},
 			},
 		}, userset)
@@ -7894,6 +7884,136 @@ func TestConstructUserset(t *testing.T) {
 		userset, err := typeSystem.ConstructUserset(context.Background(), graph.DirectEdge, "user:*")
 		require.NoError(t, err)
 		require.Equal(t, This(), userset)
+	})
+	t.Run("intersection", func(t *testing.T) {
+		model := `
+		model
+			schema 1.1
+		type user
+		type subteam
+			relations
+				define member: [user]
+		type adhoc
+			relations
+				define member: [user]
+		type team
+			relations
+				define member: [subteam#member]
+		type group
+			relations
+				define team: [team]
+				define subteam: [subteam]
+				define adhoc_member: [adhoc#member]
+				define member: (member from team and adhoc_member) and member from subteam
+		`
+		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+
+		edges, _, err := typeSystem.GetEdgesFromWeightedGraph("group#member", "user")
+		require.NoError(t, err)
+
+		require.Len(t, edges, 1)
+		rootExclusionNode := edges[0].GetTo()
+		require.Equal(t, graph.IntersectionOperator, rootExclusionNode.GetLabel())
+		require.Equal(t, graph.OperatorNode, rootExclusionNode.GetNodeType())
+		comparator, err := typeSystem.GetLowestEdgesAndTheirSiblingsForIntersection(rootExclusionNode.GetUniqueLabel(), "user")
+		require.NoError(t, err)
+		require.Len(t, comparator.Siblings, 1)
+		require.Equal(t, graph.OperatorNode, comparator.Siblings[0].GetTo().GetNodeType())
+		require.Equal(t, graph.RewriteEdge, comparator.Siblings[0].GetEdgeType())
+		require.Equal(t, graph.IntersectionOperator, comparator.Siblings[0].GetTo().GetLabel())
+		userset, err := typeSystem.ConstructUserset(context.Background(), graph.RewriteEdge, comparator.Siblings[0].GetTo().GetUniqueLabel())
+		require.NoError(t, err)
+		require.Equal(t, &openfgav1.Userset{
+			Userset: &openfgav1.Userset_Intersection{
+				Intersection: &openfgav1.Usersets{
+					Child: []*openfgav1.Userset{
+						{
+							Userset: &openfgav1.Userset_TupleToUserset{
+								TupleToUserset: &openfgav1.TupleToUserset{
+									Tupleset: &openfgav1.ObjectRelation{
+										Relation: "team",
+									},
+									ComputedUserset: &openfgav1.ObjectRelation{
+										Relation: "member",
+									},
+								},
+							},
+						},
+						{
+							Userset: &openfgav1.Userset_ComputedUserset{
+								ComputedUserset: &openfgav1.ObjectRelation{
+									Relation: "adhoc_member",
+								},
+							},
+						},
+					},
+				}}}, userset)
+	})
+	t.Run("union", func(t *testing.T) {
+		model := `
+		model
+			schema 1.1
+		type user
+		type subteam
+			relations
+				define member: [user]
+		type adhoc
+			relations
+				define member: [user]
+		type team
+			relations
+				define member: [subteam#member]
+		type group
+			relations
+				define team: [team]
+				define subteam: [subteam]
+				define adhoc_member: [adhoc#member]
+				define member: (member from team or adhoc_member) and member from subteam
+		`
+		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+
+		edges, _, err := typeSystem.GetEdgesFromWeightedGraph("group#member", "user")
+		require.NoError(t, err)
+
+		require.Len(t, edges, 1)
+		rootExclusionNode := edges[0].GetTo()
+		require.Equal(t, graph.IntersectionOperator, rootExclusionNode.GetLabel())
+		require.Equal(t, graph.OperatorNode, rootExclusionNode.GetNodeType())
+		comparator, err := typeSystem.GetLowestEdgesAndTheirSiblingsForIntersection(rootExclusionNode.GetUniqueLabel(), "user")
+		require.NoError(t, err)
+		require.Len(t, comparator.Siblings, 1)
+		require.Equal(t, graph.OperatorNode, comparator.Siblings[0].GetTo().GetNodeType())
+		require.Equal(t, graph.RewriteEdge, comparator.Siblings[0].GetEdgeType())
+		require.Equal(t, graph.UnionOperator, comparator.Siblings[0].GetTo().GetLabel())
+		userset, err := typeSystem.ConstructUserset(context.Background(), graph.RewriteEdge, comparator.Siblings[0].GetTo().GetUniqueLabel())
+		require.NoError(t, err)
+		require.Equal(t, &openfgav1.Userset{
+			Userset: &openfgav1.Userset_Union{
+				Union: &openfgav1.Usersets{
+					Child: []*openfgav1.Userset{
+						{
+							Userset: &openfgav1.Userset_TupleToUserset{
+								TupleToUserset: &openfgav1.TupleToUserset{
+									Tupleset: &openfgav1.ObjectRelation{
+										Relation: "team",
+									},
+									ComputedUserset: &openfgav1.ObjectRelation{
+										Relation: "member",
+									},
+								},
+							},
+						},
+						{
+							Userset: &openfgav1.Userset_ComputedUserset{
+								ComputedUserset: &openfgav1.ObjectRelation{
+									Relation: "adhoc_member",
+								},
+							},
+						},
+					},
+				}}}, userset)
 	})
 }
 

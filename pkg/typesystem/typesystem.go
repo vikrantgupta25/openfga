@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"iter"
 	"maps"
-	"math"
 	"reflect"
 	"slices"
 	"sort"
@@ -1702,6 +1701,34 @@ func (t *TypeSystem) IsTuplesetRelation(objectType, relation string) (bool, erro
 	return false, nil
 }
 
+// helper function to return all edges from weighted graph.
+func (t *TypeSystem) getEdgesFromWeightedGraph(
+	targetTypeRelation string,
+	sourceType string,
+) ([]*graph.WeightedAuthorizationModelEdge, *graph.WeightedAuthorizationModelNode, error) {
+	if t.authzWeightedGraph == nil {
+		return nil, nil, fmt.Errorf("weighted graph is nil")
+	}
+
+	wg := t.authzWeightedGraph
+
+	currentNode, ok := wg.GetNodeByID(targetTypeRelation)
+	if !ok {
+		return nil, nil, fmt.Errorf("could not find node with label: %s", targetTypeRelation)
+	}
+
+	// This means we cannot reach the source type requested, so there are no relevant edges.
+	if !hasPathTo(currentNode, sourceType) {
+		return nil, nil, nil
+	}
+
+	edges, ok := wg.GetEdgesFromNode(currentNode)
+	if !ok {
+		return nil, nil, fmt.Errorf("no outgoing edges from node: %s", currentNode.GetUniqueLabel())
+	}
+	return edges, currentNode, nil
+}
+
 // GetEdgesFromWeightedGraph returns all edges which have a path to the source type. It's responsible for handling
 // Operator nodes, which are nodes representing Intersection (AND) or Exclusion (BUT NOT) relations. Union (OR) nodes
 // are also Operators, but we must traverse all of their edges and can't prune in advance, so this function will
@@ -1724,25 +1751,12 @@ func (t *TypeSystem) GetEdgesFromWeightedGraph(
 	targetTypeRelation string,
 	sourceType string,
 ) ([]*graph.WeightedAuthorizationModelEdge, bool, error) {
-	if t.authzWeightedGraph == nil {
-		return nil, false, fmt.Errorf("weighted graph is nil")
+	edges, currentNode, err := t.getEdgesFromWeightedGraph(targetTypeRelation, sourceType)
+	if err != nil {
+		return nil, false, err
 	}
-
-	wg := t.authzWeightedGraph
-
-	currentNode, ok := wg.GetNodeByID(targetTypeRelation)
-	if !ok {
-		return nil, false, fmt.Errorf("could not find node with label: %s", targetTypeRelation)
-	}
-
-	// This means we cannot reach the source type requested, so there are no relevant edges.
-	if !hasPathTo(currentNode, sourceType) {
+	if len(edges) == 0 {
 		return nil, false, nil
-	}
-
-	edges, ok := wg.GetEdgesFromNode(currentNode)
-	if !ok {
-		return nil, false, fmt.Errorf("no outgoing edges from node: %s", currentNode.GetUniqueLabel())
 	}
 
 	// needsCheck is intended to be a temporary necessity for use by list_objects/reverse_expand. There is upcoming work
@@ -1788,30 +1802,12 @@ func (t *TypeSystem) GetLowestWeightEdgeForExclusion(
 	targetTypeRelation string,
 	sourceType string,
 ) ([]*graph.WeightedAuthorizationModelEdge, *graph.WeightedAuthorizationModelEdge, error) {
-	if t.authzWeightedGraph == nil {
-		return nil, nil, fmt.Errorf("weighted graph is nil")
+	edges, _, err := t.getEdgesFromWeightedGraph(targetTypeRelation, sourceType)
+	if err != nil {
+		return nil, nil, err
 	}
-
-	wg := t.authzWeightedGraph
-
-	currentNode, ok := wg.GetNodeByID(targetTypeRelation)
-	if !ok {
-		return nil, nil, fmt.Errorf("could not find node with label: %s", targetTypeRelation)
-	}
-
-	// This means we cannot reach the source type requested, so there are no relevant edges.
-	// This should never happen because GetEdgesFromWeightedGraph should have trimmed out all the edges
-	// and the lowest weight edge for exclusion should not have been called.
-	if !hasPathTo(currentNode, sourceType) {
-		return nil, nil, fmt.Errorf("no outgoing edges from node: %s for sourceType %s",
-			currentNode.GetUniqueLabel(),
-			sourceType)
-	}
-
-	edges, ok := wg.GetEdgesFromNode(currentNode)
-	if !ok {
-		// This should never happen
-		return nil, nil, fmt.Errorf("no outgoing edges from node: %s", currentNode.GetUniqueLabel())
+	if len(edges) == 0 {
+		return nil, nil, fmt.Errorf("no outgoing edges from target type %s source type %s", targetTypeRelation, sourceType)
 	}
 
 	butNotEdge := edges[len(edges)-1] // this is the edge to 'b'
@@ -1836,91 +1832,74 @@ type IntersectionEdgeComparison struct {
 // If the direct edges have equal weight as its sibling edges, it will choose
 // the direct edges as preference.
 // If any of the children are not connected, it will return nil.
-func (t *TypeSystem) GetLowestEdgesAndTheirSiblingsForIntersection(
-	targetTypeRelation string,
-	sourceType string,
-) (*IntersectionEdgeComparison, error) {
-	if t.authzWeightedGraph == nil {
-		return nil, fmt.Errorf("weighted graph is nil")
+func (t *TypeSystem) GetLowestEdgesAndTheirSiblingsForIntersection(targetTypeRelation string, sourceType string) (IntersectionEdgeComparison, error) {
+	edges, _, err := t.getEdgesFromWeightedGraph(targetTypeRelation, sourceType)
+	if err != nil {
+		return IntersectionEdgeComparison{}, err
 	}
-
-	wg := t.authzWeightedGraph
-
-	currentNode, ok := wg.GetNodeByID(targetTypeRelation)
-	if !ok {
-		return nil, fmt.Errorf("could not find node with label: %s", targetTypeRelation)
-	}
-
-	// This means we cannot reach the source type requested, so there are no relevant edges.
-	if !hasPathTo(currentNode, sourceType) {
-		return nil, nil
-	}
-
-	edges, ok := wg.GetEdgesFromNode(currentNode)
-	if !ok {
-		return nil, fmt.Errorf("no outgoing edges from node: %s", currentNode.GetUniqueLabel())
+	if len(edges) == 0 {
+		return IntersectionEdgeComparison{}, fmt.Errorf("no outgoing edges from target type %s source type %s", targetTypeRelation, sourceType)
 	}
 
 	directEdges := make([]*graph.WeightedAuthorizationModelEdge, 0, len(edges))
 	var lowestEdge *graph.WeightedAuthorizationModelEdge
 	directEdgesAreLowest := false
-	hasDirectEdges := false
-
 	lowestWeight := 0
 	assigned := false
 
-	for _, edge := range edges {
-		if edge.GetEdgeType() == graph.DirectEdge {
-			hasDirectEdges = true
-			if hasPathTo(edge, sourceType) {
+	// It is assumed that direct edge always appear first
+	for edgeNum, edge := range edges {
+		if hasPathTo(edge, sourceType) {
+			if edge.GetEdgeType() == graph.DirectEdge {
+				// The first step is to establish the largest weight for all the direct edges as they need to be
+				// treated as a group. This weight will serve as the baseline for other siblings to compare against.
 				directEdges = append(directEdges, edge)
-
-				directEdgesAreLowest = true
 				if weight, ok := edge.GetWeight(sourceType); ok {
 					if weight > lowestWeight {
+						directEdgesAreLowest = true
 						lowestWeight = weight
+						assigned = true
 					}
 				}
-				assigned = true
-			}
-		}
-	}
-	if len(directEdges) == 0 {
-		// it is assumed that the direct edges are always assigned first
-		if hasDirectEdges {
-			// in reality, should not happen because the edge should be trimmed
-			return nil, nil
-		}
-		lowestWeight = math.MaxInt32
-	}
-
-	for _, edge := range edges {
-		if edge.GetEdgeType() != graph.DirectEdge && hasPathTo(edge, sourceType) {
-			if weight, ok := edge.GetWeight(sourceType); ok {
-				if weight < lowestWeight || !assigned {
-					lowestEdge = edge
-					lowestWeight = weight
-					directEdgesAreLowest = false
-					assigned = true
+			} else { // non-direct edges
+				if lowestWeight == 0 {
+					// This means that there are no direct edges as the direct edges are processed first
+					if edgeNum != 0 {
+						// this means that all the direct edges are not connected.
+						// in reality, should not happen because the caller should have trimmed
+						// the parent node already via GetEdgesFromWeightedGraph.
+						return IntersectionEdgeComparison{}, nil
+					}
+					lowestWeight = graph.Infinite
+				}
+				if weight, ok := edge.GetWeight(sourceType); ok {
+					if weight < lowestWeight || !assigned {
+						lowestEdge = edge
+						lowestWeight = weight
+						directEdgesAreLowest = false
+						assigned = true
+					}
 				}
 			}
 		}
 	}
 
-	siblings := make([]*graph.WeightedAuthorizationModelEdge, 0, len(edges))
+	siblings := make([]*graph.WeightedAuthorizationModelEdge, 0, len(edges)-len(directEdges))
 
+	// Now, assign all the non directly assigned edges that are not the lowest
+	// weight to the sibling edges
 	for _, edge := range edges {
 		if edge.GetEdgeType() != graph.DirectEdge && edge != lowestEdge {
 			if hasPathTo(edge, sourceType) {
 				siblings = append(siblings, edge)
 			} else {
 				// In reality, should never happen because the edge is trimmed
-				return nil, nil
+				return IntersectionEdgeComparison{}, nil
 			}
 		}
 	}
 
-	return &IntersectionEdgeComparison{
+	return IntersectionEdgeComparison{
 		LowestEdge:                lowestEdge,
 		Siblings:                  siblings,
 		DirectEdges:               directEdges,
