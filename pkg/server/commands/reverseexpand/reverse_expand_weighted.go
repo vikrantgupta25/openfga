@@ -547,11 +547,16 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 		}
 		usersets = append(usersets, userset)
 	}
+	userset := &openfgav1.Userset{
+		Userset: &openfgav1.Userset_Intersection{
+			Intersection: &openfgav1.Usersets{
+				Child: usersets,
+			}}}
 
 	// Calling check on list objects candidates against non lowest weight edges
 	pool.Go(func(ctx context.Context) error {
 		for tmpResult := range tmpResultChan {
-			handlerFunc := c.localCheckResolver.CheckSetOperation(ctx,
+			handlerFunc := c.localCheckResolver.CheckRewrite(ctx,
 				&graph.ResolveCheckRequest{
 					StoreID:              req.StoreID,
 					AuthorizationModelID: c.typesystem.GetAuthorizationModelID(),
@@ -560,7 +565,7 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 					Context:              req.Context,
 					Consistency:          req.Consistency,
 					RequestMetadata:      graph.NewCheckRequestMetadata(),
-				}, graph.IntersectionSetOperator, graph.Intersection, usersets...)
+				}, userset)
 			tmpCheckResult, err := handlerFunc(ctx)
 			if err != nil {
 				c.logger.Error("Failed to execute", zap.Error(err),

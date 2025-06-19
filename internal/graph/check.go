@@ -37,9 +37,9 @@ var (
 )
 
 const (
-	UnionSetOperator setOperatorType = iota
-	IntersectionSetOperator
-	ExclusionSetOperator
+	unionSetOperator setOperatorType = iota
+	intersectionSetOperator
+	exclusionSetOperator
 )
 
 type checkOutcome struct {
@@ -1517,7 +1517,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 	}
 }
 
-func (c *LocalChecker) CheckSetOperation(
+func (c *LocalChecker) checkSetOperation(
 	ctx context.Context,
 	req *ResolveCheckRequest,
 	setOpType setOperatorType,
@@ -1528,16 +1528,16 @@ func (c *LocalChecker) CheckSetOperation(
 
 	var reducerKey string
 	switch setOpType {
-	case UnionSetOperator, IntersectionSetOperator, ExclusionSetOperator:
-		if setOpType == UnionSetOperator {
+	case unionSetOperator, intersectionSetOperator, exclusionSetOperator:
+		if setOpType == unionSetOperator {
 			reducerKey = "union"
 		}
 
-		if setOpType == IntersectionSetOperator {
+		if setOpType == intersectionSetOperator {
 			reducerKey = "Intersection"
 		}
 
-		if setOpType == ExclusionSetOperator {
+		if setOpType == exclusionSetOperator {
 			reducerKey = "exclusion"
 		}
 
@@ -1579,11 +1579,11 @@ func (c *LocalChecker) CheckRewrite(
 	case *openfgav1.Userset_TupleToUserset:
 		return c.checkTTU(ctx, req, rewrite)
 	case *openfgav1.Userset_Union:
-		return c.CheckSetOperation(ctx, req, UnionSetOperator, union, rw.Union.GetChild()...)
+		return c.checkSetOperation(ctx, req, unionSetOperator, union, rw.Union.GetChild()...)
 	case *openfgav1.Userset_Intersection:
-		return c.CheckSetOperation(ctx, req, IntersectionSetOperator, Intersection, rw.Intersection.GetChild()...)
+		return c.checkSetOperation(ctx, req, intersectionSetOperator, Intersection, rw.Intersection.GetChild()...)
 	case *openfgav1.Userset_Difference:
-		return c.CheckSetOperation(ctx, req, ExclusionSetOperator, exclusion, rw.Difference.GetBase(), rw.Difference.GetSubtract())
+		return c.checkSetOperation(ctx, req, exclusionSetOperator, exclusion, rw.Difference.GetBase(), rw.Difference.GetSubtract())
 	default:
 		return func(ctx context.Context) (*ResolveCheckResponse, error) {
 			return nil, ErrUnknownSetOperator
