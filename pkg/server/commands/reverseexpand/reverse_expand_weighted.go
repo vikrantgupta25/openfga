@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	aq "github.com/emirpasic/gods/queues/arrayqueue"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -295,7 +296,8 @@ func (c *ReverseExpandQuery) queryForTuples(
 	resultChan chan<- *ReverseExpandResult,
 	foundObject string,
 ) error {
-	span := trace.SpanFromContext(ctx)
+	ctx, span := tracer.Start(ctx, "queryForTuples")
+	defer span.End()
 
 	// This map is used for memoization of database queries for this branch of the reverse expansion.
 	// It prevents re-running the exact same database query for a given object type, relation, and user filter.
@@ -326,6 +328,9 @@ func (c *ReverseExpandQuery) queryForTuples(
 		// Each goroutine will take its first job from the original queue above
 		// and then continue generating and processing jobs until there are no more.
 		pool.Go(func(ctx context.Context) error {
+			ctx, span := tracer.Start(ctx, "queryForTuples inside pool")
+			defer span.End()
+
 			localQueue := newJobQueue()
 			localQueue.enqueue(job)
 
@@ -371,6 +376,13 @@ func (c *ReverseExpandQuery) executeQueryJob(
 	needsCheck bool,
 	jobDedupeMap *sync.Map,
 ) ([]queryJob, error) {
+	ctx, span := tracer.Start(ctx, "executeQueryJob",
+		trace.WithAttributes(
+			attribute.String("job", job.foundObject),
+			attribute.Bool("needsCheck", needsCheck),
+		),
+	)
+	defer span.End()
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -510,6 +522,14 @@ func (c *ReverseExpandQuery) buildFilteredIterator(
 	relation string,
 	userFilter []*openfgav1.ObjectRelation,
 ) (storage.TupleKeyIterator, error) {
+	ctx, span := tracer.Start(ctx, "buildFilteredIterator",
+		trace.WithAttributes(
+			attribute.String("objectType", objectType),
+			attribute.String("relation", relation),
+		),
+	)
+	defer span.End()
+
 	iter, err := c.datastore.ReadStartingWithUser(ctx, req.StoreID, storage.ReadStartingWithUserFilter{
 		ObjectType: objectType,
 		Relation:   relation,
@@ -573,6 +593,67 @@ func (c *ReverseExpandQuery) findCandidatesForLowestWeightEdge(
 	})
 }
 
+func (c *ReverseExpandQuery) callCheckForCandidatesFunction(
+	ctx context.Context,
+	req *ReverseExpandRequest,
+	tmpResult *ReverseExpandResult,
+	resultChan chan<- *ReverseExpandResult,
+	userset *openfgav1.Userset,
+	isAllowed bool,
+) error {
+	ctx, span := tracer.Start(ctx, "callCheckForCandidatesFunction",
+		trace.WithAttributes(
+			attribute.String("tmpResult", tmpResult.Object),
+			attribute.Bool("isAllowed", isAllowed),
+		),
+	)
+	defer span.End()
+	handlerFunc := c.localCheckResolver.CheckRewrite(ctx,
+		&graph.ResolveCheckRequest{
+			StoreID:              req.StoreID,
+			AuthorizationModelID: c.typesystem.GetAuthorizationModelID(),
+			TupleKey:             tuple.NewTupleKey(tmpResult.Object, req.Relation, req.User.String()),
+			ContextualTuples:     req.ContextualTuples,
+			Context:              req.Context,
+			Consistency:          req.Consistency,
+			RequestMetadata:      graph.NewCheckRequestMetadata(),
+		}, userset)
+	tmpCheckResult, err := handlerFunc(ctx)
+	if err != nil {
+		functionName := "intersectionHandler"
+		if !isAllowed {
+			functionName = "exclusionHandler"
+		}
+		c.logger.Error("Failed to execute", zap.Error(err),
+			zap.String("function", functionName),
+			zap.String("object", tmpResult.Object),
+			zap.String("relation", req.Relation),
+			zap.String("user", req.User.String()))
+		return err
+	}
+
+	// If the allowed value does not match what we expect, we skip this candidate.
+	// eg, for intersection we expect the check result to be true
+	// and for exclusion we expect the check result to be false.
+	if tmpCheckResult.GetAllowed() != isAllowed {
+		return nil
+	}
+
+	// If the original stack only had 1 value, we can trySendCandidate right away (nothing more to check)
+	if stack.Len(req.relationStack) == 0 {
+		c.trySendCandidate(ctx, false, tmpResult.Object, resultChan)
+		return nil
+	}
+
+	// If the original stack had more than 1 value, we need to query the parent values
+	// new stack with top item in stack
+	err = c.queryForTuples(ctx, req, false, resultChan, tmpResult.Object)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // callCheckForCandidates calls check on the list objects candidates against non lowest weight edges.
 func (c *ReverseExpandQuery) callCheckForCandidates(
 	pool *concurrency.Pool,
@@ -584,46 +665,7 @@ func (c *ReverseExpandQuery) callCheckForCandidates(
 ) {
 	pool.Go(func(ctx context.Context) error {
 		for tmpResult := range tmpResultChan {
-			handlerFunc := c.localCheckResolver.CheckRewrite(ctx,
-				&graph.ResolveCheckRequest{
-					StoreID:              req.StoreID,
-					AuthorizationModelID: c.typesystem.GetAuthorizationModelID(),
-					TupleKey:             tuple.NewTupleKey(tmpResult.Object, req.Relation, req.User.String()),
-					ContextualTuples:     req.ContextualTuples,
-					Context:              req.Context,
-					Consistency:          req.Consistency,
-					RequestMetadata:      graph.NewCheckRequestMetadata(),
-				}, userset)
-			tmpCheckResult, err := handlerFunc(ctx)
-			if err != nil {
-				functionName := "intersectionHandler"
-				if !isAllowed {
-					functionName = "exclusionHandler"
-				}
-				c.logger.Error("Failed to execute", zap.Error(err),
-					zap.String("function", functionName),
-					zap.String("object", tmpResult.Object),
-					zap.String("relation", req.Relation),
-					zap.String("user", req.User.String()))
-				return err
-			}
-
-			// If the allowed value does not match what we expect, we skip this candidate.
-			// eg, for intersection we expect the check result to be true
-			// and for exclusion we expect the check result to be false.
-			if tmpCheckResult.GetAllowed() != isAllowed {
-				continue
-			}
-
-			// If the original stack only had 1 value, we can trySendCandidate right away (nothing more to check)
-			if stack.Len(req.relationStack) == 0 {
-				c.trySendCandidate(ctx, false, tmpResult.Object, resultChan)
-				continue
-			}
-
-			// If the original stack had more than 1 value, we need to query the parent values
-			// new stack with top item in stack
-			err = c.queryForTuples(ctx, req, false, resultChan, tmpResult.Object)
+			err := c.callCheckForCandidatesFunction(ctx, req, tmpResult, resultChan, userset, isAllowed)
 			if err != nil {
 				return err
 			}

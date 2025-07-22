@@ -696,7 +696,7 @@ LoopOnIterator:
 }
 
 func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, intersectionOrExclusionInPreviousEdges bool, candidateObject string, candidateChan chan<- *ReverseExpandResult) {
-	_, span := tracer.Start(ctx, "trySendCandidate", trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, "trySendCandidate", trace.WithAttributes(
 		attribute.String("object", candidateObject),
 		attribute.Bool("sent", false),
 	))
@@ -720,8 +720,8 @@ func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, intersectionO
 }
 
 func (c *ReverseExpandQuery) throttle(ctx context.Context, currentNumDispatch uint32, metadata *ResolutionMetadata) {
-	span := trace.SpanFromContext(ctx)
-
+	ctx, span := tracer.Start(ctx, "throttle")
+	defer span.End()
 	shouldThrottle := threshold.ShouldThrottle(
 		ctx,
 		currentNumDispatch,
