@@ -26,7 +26,8 @@ import (
 )
 
 const (
-	listObjectsResultChannelLength = 100
+	listObjectsResultChannelLength             = 100
+	numConcurrentCheckForIntersectionExclusion = 3
 )
 
 var ErrEmptyStack = errors.New("unexpected empty stack")
@@ -647,7 +648,7 @@ func (c *ReverseExpandQuery) callCheckForCandidates(
 		// note that we create a separate goroutine pool instead of the main pool
 		// to avoid starvation on the main pool as there could be many candidates
 		// arriving concurrently.
-		tmpResultPool := concurrency.NewPool(ctx, 5)
+		tmpResultPool := concurrency.NewPool(ctx, numConcurrentCheckForIntersectionExclusion)
 
 		for tmpResult := range tmpResultChan {
 			tmpResultPool.Go(func(ctx context.Context) error {
