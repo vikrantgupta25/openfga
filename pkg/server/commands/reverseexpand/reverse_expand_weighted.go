@@ -27,7 +27,7 @@ import (
 
 const (
 	listObjectsResultChannelLength             = 100
-	numConcurrentCheckForIntersectionExclusion = 3
+	numConcurrentCheckForIntersectionExclusion = 5
 )
 
 var ErrEmptyStack = errors.New("unexpected empty stack")
