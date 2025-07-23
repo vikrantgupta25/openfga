@@ -647,7 +647,7 @@ func (c *ReverseExpandQuery) callCheckForCandidates(
 		// note that we create a separate goroutine pool instead of the main pool
 		// to avoid starvation on the main pool as there could be many candidates
 		// arriving concurrently.
-		tmpResultPool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
+		tmpResultPool := concurrency.NewPool(ctx, 5)
 
 		for tmpResult := range tmpResultChan {
 			tmpResultPool.Go(func(ctx context.Context) error {
