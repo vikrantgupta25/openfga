@@ -61,6 +61,9 @@ type typeRelEntry struct {
 	// Only present for userset relations. Will be the userset relation string itself.
 	// For `rel admin: [team#member]`, usersetRelation is "member"
 	usersetRelation string
+
+	// For self-referential recursive relations
+	isRecursive bool
 }
 
 // queryJob represents a single task in the reverse expansion process.
@@ -238,6 +241,11 @@ func (c *ReverseExpandQuery) loopOverEdges(
 
 			// stack.Push tupleset relation (`document#parent`)
 			tuplesetRel := typeRelEntry{typeRel: edge.GetTuplesetRelation()}
+
+			if toNode.GetRecursiveRelation() != "" {
+				tuplesetRel.isRecursive = true
+			}
+
 			newStack = stack.Push(newStack, tuplesetRel)
 
 			// stack.Push target type#rel (`folder#admin`)
@@ -332,6 +340,8 @@ func (c *ReverseExpandQuery) queryForTuples(
 
 	queryJobQueue := newJobQueue()
 
+	//fmt.Printf("Original stack: %#v\n", req.relationStack)
+	fmt.Printf("Original stack: %s\n", stack.String(req.relationStack))
 	// Now kick off the chain of queries
 	items, err := c.executeQueryJob(ctx, queryJob{req: req, foundObject: foundObject}, resultChan, needsCheck)
 	if err != nil {
@@ -344,7 +354,8 @@ func (c *ReverseExpandQuery) queryForTuples(
 
 	// We could potentially have c.resolveNodeBreadthLimit active routines reaching this point.
 	// Limit querying routines to avoid explosion of routines.
-	pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
+	//pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
+	pool := concurrency.NewPool(ctx, 1)
 
 	for !queryJobQueue.Empty() {
 		job, ok := queryJobQueue.dequeue()
@@ -405,26 +416,40 @@ func (c *ReverseExpandQuery) executeQueryJob(
 	}
 
 	// Ensure we're always working with a copy
-	currentReq := job.req.clone()
+	newReq := job.req.clone()
 
-	userFilter, err := buildUserFilter(currentReq, job.foundObject)
+	userFilter, err := buildUserFilter(newReq, job.foundObject)
 	if err != nil {
 		return nil, err
 	}
 
-	if currentReq.relationStack == nil {
+	if newReq.relationStack == nil {
 		return nil, ErrEmptyStack
 	}
 
+	var recursiveStack stack.Stack[typeRelEntry]
+	if stack.Peek(newReq.relationStack).isRecursive {
+		recursiveStack = newReq.relationStack
+	}
+
 	// Now pop the top relation off of the stack for querying
-	entry, newStack := stack.Pop(currentReq.relationStack)
+	entry, newStack := stack.Pop(newReq.relationStack)
 	typeRel := entry.typeRel
 
-	currentReq.relationStack = newStack
+	fmt.Printf("newReq Stack 1 here: %#v\n", newReq.relationStack)
+	fmt.Printf("recursiveStack 1 here: %#v\n", recursiveStack)
+
+	newReq.relationStack = newStack
+
+	fmt.Printf("newReq Stack 2 here: %#v\n", newReq.relationStack)
+	fmt.Printf("recursiveStack 2 here: %#v\n", recursiveStack)
+	if recursiveStack == newReq.relationStack && recursiveStack != nil {
+		panic("shouldn't be")
+	}
 
 	objectType, relation := tuple.SplitObjectRelation(typeRel)
 
-	filteredIter, err := c.buildFilteredIterator(ctx, currentReq, objectType, relation, userFilter)
+	filteredIter, err := c.buildFilteredIterator(ctx, newReq, objectType, relation, userFilter)
 	if err != nil {
 		return nil, err
 	}
@@ -446,14 +471,23 @@ func (c *ReverseExpandQuery) executeQueryJob(
 
 		// If there are no more type#rel to look for in the stack that means we have hit the base case
 		// and this object is a candidate for return to the user.
-		if currentReq.relationStack == nil {
+		if newReq.relationStack == nil {
 			c.trySendCandidate(ctx, needsCheck, foundObject, resultChan)
 			continue
 		}
 
 		// For non-recursive relations (majority of cases), if there are more items on the stack, we continue
 		// the evaluation one level higher up the tree with the `foundObject`.
-		nextJobs = append(nextJobs, queryJob{foundObject: foundObject, req: currentReq})
+		nextJobs = append(nextJobs, queryJob{foundObject: foundObject, req: newReq})
+		fmt.Printf("adding job %v, stack: %s\n", queryJob{foundObject: foundObject, req: newReq}, stack.String(newReq.relationStack))
+
+		// if recursive, add another job with this object but with the original stack from the request
+		if recursiveStack != nil {
+			recursiveReq := newReq.clone()
+			recursiveReq.relationStack = recursiveStack
+			nextJobs = append(nextJobs, queryJob{foundObject: foundObject, req: recursiveReq})
+			fmt.Printf("adding recursive job %v, stack: %s\n", queryJob{foundObject: foundObject, req: recursiveReq}, stack.String(recursiveReq.relationStack))
+		}
 	}
 
 	return nextJobs, err
