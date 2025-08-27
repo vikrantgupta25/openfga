@@ -246,7 +246,16 @@ func (c *ReverseExpandQuery) loopOverEdges(
 				tuplesetRel.isRecursive = true
 			}
 
-			newStack = stack.Push(newStack, tuplesetRel)
+			if newStack == nil {
+				newStack = stack.Push(newStack, tuplesetRel)
+			} else {
+				currValue := stack.Peek(newStack)
+				if currValue.typeRel != tuplesetRel.typeRel &&
+					currValue.usersetRelation != tuplesetRel.usersetRelation &&
+					currValue.isRecursive != tuplesetRel.isRecursive {
+					newStack = stack.Push(newStack, tuplesetRel)
+				}
+			}
 
 			// stack.Push target type#rel (`folder#admin`)
 			newStack = stack.Push(newStack, typeRelEntry{typeRel: toNode.GetUniqueLabel()})
@@ -473,6 +482,13 @@ func (c *ReverseExpandQuery) executeQueryJob(
 		// and this object is a candidate for return to the user.
 		if newReq.relationStack == nil {
 			c.trySendCandidate(ctx, needsCheck, foundObject, resultChan)
+			// if recursive, add another job with this object but with the original stack from the request
+			if recursiveStack != nil {
+				recursiveReq := newReq.clone()
+				recursiveReq.relationStack = recursiveStack
+				nextJobs = append(nextJobs, queryJob{foundObject: foundObject, req: recursiveReq})
+				fmt.Printf("adding recursive job %v, stack: %s\n", queryJob{foundObject: foundObject, req: recursiveReq}, stack.String(recursiveReq.relationStack))
+			}
 			continue
 		}
 
@@ -480,14 +496,6 @@ func (c *ReverseExpandQuery) executeQueryJob(
 		// the evaluation one level higher up the tree with the `foundObject`.
 		nextJobs = append(nextJobs, queryJob{foundObject: foundObject, req: newReq})
 		fmt.Printf("adding job %v, stack: %s\n", queryJob{foundObject: foundObject, req: newReq}, stack.String(newReq.relationStack))
-
-		// if recursive, add another job with this object but with the original stack from the request
-		if recursiveStack != nil {
-			recursiveReq := newReq.clone()
-			recursiveReq.relationStack = recursiveStack
-			nextJobs = append(nextJobs, queryJob{foundObject: foundObject, req: recursiveReq})
-			fmt.Printf("adding recursive job %v, stack: %s\n", queryJob{foundObject: foundObject, req: recursiveReq}, stack.String(recursiveReq.relationStack))
-		}
 	}
 
 	return nextJobs, err
