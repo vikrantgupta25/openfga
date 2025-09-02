@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/internal/utils"
 	"sync"
 
 	aq "github.com/emirpasic/gods/queues/arrayqueue"
@@ -183,8 +184,17 @@ func (c *ReverseExpandQuery) loopOverEdges(
 				entry, newStack := stack.Pop(newReq.relationStack)
 				entry.usersetRelation = tuple.GetRelation(toNode.GetUniqueLabel())
 
+				if toNode.GetRecursiveRelation() != "" {
+					entry.isRecursive = true
+				}
+
 				newStack = stack.Push(newStack, entry)
-				newStack = stack.Push(newStack, typeRelEntry{typeRel: toNode.GetUniqueLabel()})
+				tuplesetRel := typeRelEntry{typeRel: toNode.GetUniqueLabel()}
+				if entry.typeRel != tuplesetRel.typeRel &&
+					entry.usersetRelation != tuplesetRel.usersetRelation &&
+					entry.isRecursive != tuplesetRel.isRecursive {
+					newStack = stack.Push(newStack, tuplesetRel)
+				}
 				newReq.relationStack = newStack
 
 				// Now continue traversing
@@ -241,6 +251,12 @@ func (c *ReverseExpandQuery) loopOverEdges(
 
 			// stack.Push tupleset relation (`document#parent`)
 			tuplesetRel := typeRelEntry{typeRel: edge.GetTuplesetRelation()}
+
+			// TODO:
+			// ???
+			//if tuplesetRel.isRecursive && toNode.GetUniqueLabel() == toNode.GetRecursiveRelation() {
+			//	return
+			//}
 
 			if toNode.GetRecursiveRelation() != "" {
 				tuplesetRel.isRecursive = true
@@ -345,14 +361,16 @@ func (c *ReverseExpandQuery) queryForTuples(
 	resultChan chan<- *ReverseExpandResult,
 	foundObject string,
 ) error {
+	fmt.Printf("---- Querying for tuples: %v\n", foundObject)
 	span := trace.SpanFromContext(ctx)
+	dedupeMap := &sync.Map{}
 
 	queryJobQueue := newJobQueue()
 
 	//fmt.Printf("Original stack: %#v\n", req.relationStack)
-	fmt.Printf("Original stack: %s\n", stack.String(req.relationStack))
+	//fmt.Printf("Original stack: %s\n", stack.String(req.relationStack))
 	// Now kick off the chain of queries
-	items, err := c.executeQueryJob(ctx, queryJob{req: req, foundObject: foundObject}, resultChan, needsCheck)
+	items, err := c.executeQueryJob(ctx, queryJob{req: req, foundObject: foundObject}, resultChan, needsCheck, dedupeMap)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return err
@@ -385,7 +403,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 				if !ok {
 					break
 				}
-				newItems, err := c.executeQueryJob(ctx, nextJob, resultChan, needsCheck)
+				newItems, err := c.executeQueryJob(ctx, nextJob, resultChan, needsCheck, dedupeMap)
 				if err != nil {
 					return err
 				}
@@ -419,6 +437,7 @@ func (c *ReverseExpandQuery) executeQueryJob(
 	job queryJob,
 	resultChan chan<- *ReverseExpandResult,
 	needsCheck bool,
+	dedupeMap *sync.Map,
 ) ([]queryJob, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
@@ -445,18 +464,32 @@ func (c *ReverseExpandQuery) executeQueryJob(
 	entry, newStack := stack.Pop(newReq.relationStack)
 	typeRel := entry.typeRel
 
-	fmt.Printf("newReq Stack 1 here: %#v\n", newReq.relationStack)
-	fmt.Printf("recursiveStack 1 here: %#v\n", recursiveStack)
+	//fmt.Printf("newReq Stack 1 here: %#v\n", newReq.relationStack)
+	//fmt.Printf("recursiveStack 1 here: %#v\n", recursiveStack)
 
 	newReq.relationStack = newStack
 
-	fmt.Printf("newReq Stack 2 here: %#v\n", newReq.relationStack)
-	fmt.Printf("recursiveStack 2 here: %#v\n", recursiveStack)
+	//fmt.Printf("newReq Stack 2 here: %#v\n", newReq.relationStack)
+	//fmt.Printf("recursiveStack 2 here: %#v\n", recursiveStack)
 	if recursiveStack == newReq.relationStack && recursiveStack != nil {
 		panic("shouldn't be")
 	}
 
 	objectType, relation := tuple.SplitObjectRelation(typeRel)
+
+	userFilterString := utils.Reduce(userFilter, "", func(acc string, curr *openfgav1.ObjectRelation) string {
+		return acc + curr.String()
+	})
+	uniqueKey := objectType + relation + userFilterString
+	dedupeMap.Range(func(k, v interface{}) bool {
+		fmt.Println("dedupeMap range (): ", k)
+		return true
+	})
+	_, loaded := dedupeMap.LoadOrStore(uniqueKey, struct{}{})
+	fmt.Printf("uniqueKey here: %s, %v\n", uniqueKey, loaded)
+	if loaded {
+		return nil, nil
+	}
 
 	filteredIter, err := c.buildFilteredIterator(ctx, newReq, objectType, relation, userFilter)
 	if err != nil {
@@ -487,7 +520,7 @@ func (c *ReverseExpandQuery) executeQueryJob(
 				recursiveReq := newReq.clone()
 				recursiveReq.relationStack = recursiveStack
 				nextJobs = append(nextJobs, queryJob{foundObject: foundObject, req: recursiveReq})
-				fmt.Printf("adding recursive job %v, stack: %s\n", queryJob{foundObject: foundObject, req: recursiveReq}, stack.String(recursiveReq.relationStack))
+				//fmt.Printf("adding recursive job %v, stack: %s\n", queryJob{foundObject: foundObject, req: recursiveReq}, stack.String(recursiveReq.relationStack))
 			}
 			continue
 		}
@@ -495,7 +528,7 @@ func (c *ReverseExpandQuery) executeQueryJob(
 		// For non-recursive relations (majority of cases), if there are more items on the stack, we continue
 		// the evaluation one level higher up the tree with the `foundObject`.
 		nextJobs = append(nextJobs, queryJob{foundObject: foundObject, req: newReq})
-		fmt.Printf("adding job %v, stack: %s\n", queryJob{foundObject: foundObject, req: newReq}, stack.String(newReq.relationStack))
+		//fmt.Printf("adding job %v, stack: %s\n", queryJob{foundObject: foundObject, req: newReq}, stack.String(newReq.relationStack))
 	}
 
 	return nextJobs, err

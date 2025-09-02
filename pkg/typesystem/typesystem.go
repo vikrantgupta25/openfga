@@ -237,7 +237,10 @@ func New(model *openfgav1.AuthorizationModel) (*TypeSystem, error) {
 
 	wgb := graph.NewWeightedAuthorizationModelGraphBuilder()
 	// TODO: this will require a deprecation not ignore the error and remove nil checks
-	weightedGraph, _ := wgb.Build(model)
+	weightedGraph, err := wgb.Build(model)
+	if err != nil {
+		fmt.Printf("Error building WeightedAuthorizationModelGraph: %v\n", err)
+	}
 
 	return &TypeSystem{
 		modelID:                 model.GetId(),
